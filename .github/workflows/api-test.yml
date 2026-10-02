@@ -1,0 +1,33 @@
+# FIRST TEST: can GitHub's servers reach Delta Exchange India's public API?
+# Takes one snapshot and commits it (so the publish step is tested too).
+name: api test (one snapshot)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet requests
+      - name: Where is this runner?
+        run: curl -s --max-time 10 https://ipinfo.io/json | grep -E '"(city|region|country|org)"' || true
+      - name: Raw API check (status code + first bytes)
+        run: |
+          curl -s -o /tmp/r.json -w "tickers/BTCUSD HTTP %{http_code}\n" --max-time 20 https://api.india.delta.exchange/v2/tickers/BTCUSD
+          head -c 300 /tmp/r.json; echo
+      - name: Take one snapshot
+        run: python collector.py --out _out --tag apitest
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python publish.py _out "api test $(date -u +%Y-%m-%dT%H:%MZ)"
