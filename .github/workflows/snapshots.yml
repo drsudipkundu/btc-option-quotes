@@ -1,0 +1,34 @@
+# One snapshot every 30 minutes, all day, every day. GitHub may start a scheduled run a few minutes
+# late -- that is fine, every row carries the real time it was taken.
+name: snapshots (every 30 min)
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:        # "Run workflow" button, for tests
+
+permissions:
+  contents: write           # nothing else: it can only commit data to this repo
+
+concurrency:
+  group: snapshots
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet requests
+      - name: Take one snapshot
+        run: python collector.py --out _out --tag halfhour
+        continue-on-error: true      # a failure is already written to missing.csv -- publish it anyway
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python publish.py _out "snapshot $(date -u +%Y-%m-%dT%H:%MZ)"

@@ -1,0 +1,40 @@
+# On the 2nd of every month: merge each finished month's CSV files into parquet/YYYY-MM.parquet
+# (row count verified before anything is deleted). Keeps the repo small.
+name: monthly merge to Parquet
+
+on:
+  schedule:
+    - cron: "0 3 2 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: monthly
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet pandas pyarrow
+      - name: Merge finished months
+        run: python merge_month.py
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A data parquet
+          if git diff --cached --quiet; then echo "nothing to commit"; exit 0; fi
+          git commit -m "monthly merge $(date -u +%Y-%m-%d)"
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep $((i * 10))
+          done
+          exit 1
