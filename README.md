@@ -69,14 +69,14 @@ About 310 option rows per snapshot. All BTC options settle at 12:00 UTC (17:30 I
 
 ## The report (on the PC)
 
-The repository is copied to Google Drive at `E:\My Drive\MarketDatatcusd\option_quotes_repo\` by the
+The repository is copied to Google Drive at `E:\My Drive\MarketDatabtcusd\option_quotes_repo\` by the
 Windows task **BTC-Option-Quotes-Sync** (at logon and every 6 hours; log: `...tcusd\option_quotes_sync.log`).
 Nothing is lost while the PC is off -- everything is on GitHub and the next sync catches up.
 
 ```
-cd "E:\My Drive\MarketDatatcusd\option_quotes_repo"
+cd "E:\My Drive\MarketDatabtcusd\option_quotes_repo"
 python option_quote_report.py                                  # all recorded days
-python option_quote_report.py --start 2026-10-03 --end 2026-10-31 --out "E:\My Drive\MarketDatatcusd\option_quote_reports"
+python option_quote_report.py --start 2026-10-03 --end 2026-10-31 --out "E:\My Drive\MarketDatabtcusd\option_quote_reports"
 ```
 
 It writes `sells_*.csv`, `roundtrip_*.csv`, `spreads_*.csv`, `puts_*.csv` and `summary_*.md`:
