@@ -12,15 +12,22 @@ Purpose: Delta keeps no history of bid/ask quotes, so this archive records them 
 measure the real cost of selling and buying back short-dated covered calls and buying protective puts.
 Nothing is back-filled or invented; a slot that could not be captured is listed in `missing.csv`.
 
-## Schedule (GitHub Actions, UTC cron)
+## Schedule (GitHub Actions)
 
-| Workflow | When | What |
-|---|---|---|
-| `snapshots.yml` | every 30 minutes | one snapshot |
-| `evening.yml` | starts 11:30 UTC (17:00 IST) | one snapshot every minute 17:08-17:47 IST, then audits yesterday's half-hour slots |
-| `monthly.yml` | 2nd of each month, 03:00 UTC | merges the finished month into `parquet/YYYY-MM.parquet` and deletes its CSVs |
+GitHub starts short scheduled jobs late or skips them (in the first day only 3 of ~35 half-hourly runs
+started), so one `collector.yml` job stays alive about 5.5 hours and keeps its own timetable:
 
-GitHub often starts scheduled runs a few minutes late; every row records the real time.
+| What | When |
+|---|---|
+| one snapshot | every :00 and :30 UTC, all day |
+| one snapshot every minute | 17:08-17:47 IST (covered-call buy-back 17:20-17:29, sale 17:35) |
+| audit of yesterday | start of every run: half-hours and evening minutes with no snapshot -> `missing.csv` |
+
+Each run publishes after every snapshot (after the whole evening window for the minute snapshots) and,
+when it ends, starts the next run itself. An hourly schedule (minute 17) only restarts the chain if it
+ever breaks. Only one collector runs at a time; an extra start waits, or shows as *cancelled* when a newer
+one replaces it -- that is normal. `monthly.yml` (2nd of each month, 03:00 UTC) merges the finished
+month into `parquet/YYYY-MM.parquet` and deletes its CSVs.
 
 ## Files
 
@@ -62,9 +69,9 @@ About 310 option rows per snapshot. All BTC options settle at 12:00 UTC (17:30 I
 
 ## Scripts
 
-- `collector.py` -- one snapshot, or one per minute in an IST window (`--every 60 --from-ist --until-ist`)
+- `collector.py` -- `--session-minutes 330` (what GitHub runs), one snapshot, or one per minute in an IST window
 - `publish.py` -- commits a run's files; safe when two workflows finish at once
-- `audit.py` -- lists half-hour slots of a finished day that have no snapshot at all
+- `audit.py` -- lists half-hour slots and evening minutes of a finished day that have no snapshot at all
 - `merge_month.py` -- monthly CSV -> Parquet merge, verified before deleting
 
 ## The report (on the PC)
@@ -96,4 +103,4 @@ Needs Python with `pandas` (and `pyarrow` once monthly Parquet files exist).
 
 GitHub disables scheduled workflows in a public repository after 60 days without activity. The data
 commits count as activity, so this should not happen. If it does: open the repository -> **Actions** tab
--> click the paused workflow in the left list -> click **Enable workflow**. Do it for each of the three.
+-> click the paused workflow in the left list -> click **Enable workflow**. Do it for `collector` and `monthly merge to Parquet`.

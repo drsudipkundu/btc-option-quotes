@@ -1,11 +1,11 @@
 r"""
-audit.py -- find half-hour slots of a finished UTC day that have NO snapshot at all, and list them in
-that day's missing.csv. (GitHub sometimes starts scheduled runs late or skips them under load; a failed
+audit.py -- find half-hour slots and 17:08-17:47 IST evening minutes of a finished UTC day that have NO
+snapshot at all, and list them in that day's missing.csv. (GitHub sometimes starts scheduled runs late or skips them under load; a failed
 collector already records itself, but a run that never started cannot -- this catches those.)
 
 A slot HH:00 / HH:30 counts as covered if ANY snapshot (half-hourly or evening) exists between the slot
 and 29 minutes after it, because GitHub's start delay is normal and the real time is in every row.
-Runs inside the evening workflow for yesterday; re-running is harmless (already-listed slots are skipped).
+Runs at the start of every collector session for yesterday; re-running is harmless (already-listed slots are skipped).
 
     python audit.py _out 2026-10-01      # writes rows to _out/data/2026/10/01/missing.csv
 """
@@ -20,6 +20,8 @@ IST = timezone(timedelta(hours=5, minutes=30))
 NAME_RE = re.compile(r"^quotes_(\d{2})(\d{2})_[a-z]+\.csv\.gz$")
 FIRST_DAY = "2026-10-03"         # first FULL day of the archive (2-Oct started mid-day); earlier days are not audited
 REASON = "no snapshot in this half-hour (scheduled run skipped or very late)"
+REASON_EVENING = "no snapshot in this evening minute (17:08-17:47 IST window)"
+EVENING_UTC = (11 * 60 + 38, 12 * 60 + 17)   # 17:08-17:47 IST as minutes after 00:00 UTC
 
 
 def main():
@@ -38,7 +40,7 @@ def main():
     mpath = os.path.join(rel, "missing.csv")
     if os.path.exists(mpath):
         with open(mpath, encoding="utf-8") as f:
-            already = {r["slot_utc"] for r in csv.DictReader(f) if r["reason"] == REASON}
+            already = {r["slot_utc"] for r in csv.DictReader(f) if r["reason"] in (REASON, REASON_EVENING)}
 
     gaps = []
     for k in range(48):
@@ -47,8 +49,13 @@ def main():
             slot = day + timedelta(minutes=start)
             if slot.isoformat() not in already:
                 gaps.append(slot)
+    gaps = [(g, "halfhour", REASON) for g in gaps]
+    for minute in range(EVENING_UTC[0], EVENING_UTC[1] + 1):
+        slot = day + timedelta(minutes=minute)
+        if minute not in have and slot.isoformat() not in already:
+            gaps.append((slot, "evening", REASON_EVENING))
     if not gaps:
-        print(f"audit {day:%Y-%m-%d}: all 48 half-hour slots covered")
+        print(f"audit {day:%Y-%m-%d}: all 48 half-hour slots and 40 evening minutes covered")
         return 0
 
     od = os.path.join(out, rel)
@@ -60,9 +67,9 @@ def main():
         if new:
             w.writerow(["slot_utc", "slot_ist", "tag", "reason", "logged_utc"])
         now = datetime.now(UTC).replace(microsecond=0).isoformat()
-        for s in gaps:
-            w.writerow([s.isoformat(), s.astimezone(IST).isoformat(), "halfhour", REASON, now])
-    print(f"audit {day:%Y-%m-%d}: {len(gaps)} of 48 half-hour slots had no snapshot -> missing.csv")
+        for s, tag, reason in sorted(gaps):
+            w.writerow([s.isoformat(), s.astimezone(IST).isoformat(), tag, reason, now])
+    print(f"audit {day:%Y-%m-%d}: {len(gaps)} slots had no snapshot -> missing.csv")
     return 0
 
 

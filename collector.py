@@ -1,7 +1,9 @@
 r"""
 collector.py -- snapshot(s) of live BTC option + BTCUSD perpetual quotes from Delta Exchange India.
 
-Runs on GitHub Actions (see .github/workflows/), but works the same on any PC:
+Runs on GitHub Actions (.github/workflows/collector.yml), but works the same on any PC:
+    python collector.py --out _out --session-minutes 330             # GitHub: ~5.5 h, half-hourly +
+                                                                     # every minute 17:08-17:47 IST
     python collector.py --out _out --tag halfhour                       # one snapshot
     python collector.py --out _out --tag evening --every 60 \
                         --from-ist 17:08 --until-ist 17:47              # one per minute in a window
@@ -36,6 +38,8 @@ import gzip
 import io
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -277,8 +281,65 @@ def ist_today_at(hhmm, now):
     return now.astimezone(IST).replace(hour=h, minute=m, second=0, microsecond=0).astimezone(UTC)
 
 
+DENSE_IST = ("17:08", "17:47")      # every-minute window (covered-call buy-back 17:20-17:29, sale 17:35)
+
+
+def session_slots(start, end):
+    """Timetable for one session: every minute inside DENSE_IST, otherwise every :00 / :30 UTC."""
+    slots, t = [], start.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    while t < end:
+        hm = t.astimezone(IST).strftime("%H:%M")
+        if DENSE_IST[0] <= hm <= DENSE_IST[1]:
+            slots.append((t, "evening"))
+        elif t.minute in (0, 30):
+            slots.append((t, "halfhour"))
+        t += timedelta(minutes=1)
+    return slots
+
+
+def publish(out, label):
+    """Commit + push what is in `out` (publish.py), then empty it. A failed push keeps the files for the next try."""
+    if not os.path.isdir(os.path.join(out, "data")):
+        return
+    here = os.path.dirname(os.path.abspath(__file__))
+    r = subprocess.run([sys.executable, os.path.join(here, "publish.py"), out, label], cwd=here)
+    if r.returncode == 0:
+        shutil.rmtree(os.path.join(out, "data"), ignore_errors=True)
+    else:
+        log("publish failed -- files kept, will retry with the next snapshot")
+
+
+def run_session(session, settle, out, minutes):
+    """Long-running mode for GitHub Actions: GitHub starts short scheduled jobs late or not at all, so ONE
+    job stays alive for `minutes`, keeps its own timetable and publishes after every half-hour snapshot and
+    after the evening window. A slot it could not reach in time is written to missing.csv, never filled."""
+    start = datetime.now(UTC)
+    slots = session_slots(start, start + timedelta(minutes=minutes))
+    log(f"session: {len(slots)} slots until {slots[-1][0]:%H:%M}Z" if slots else "session: no slots")
+    ok = bad = 0
+    for i, (slot, tag) in enumerate(slots):
+        now = datetime.now(UTC)
+        if now < slot:
+            time.sleep((slot - now).total_seconds() + 1)
+        if datetime.now(UTC) >= slot + timedelta(seconds=55):       # a slow retry ran into the next minute
+            record_missing(out, slot, tag, "previous snapshot still running at this time")
+            bad += 1
+        elif one(session, settle, out, tag, slot):
+            ok += 1
+        else:
+            bad += 1
+        next_tag = slots[i + 1][1] if i + 1 < len(slots) else None
+        if tag == "halfhour" or next_tag != "evening":
+            publish(out, f"{tag} {slot:%Y-%m-%dT%H:%MZ}")
+    publish(out, f"session end {datetime.now(UTC):%Y-%m-%dT%H:%MZ}")
+    log(f"session done: {ok} snapshots, {bad} missing")
+    return 0 if ok or not slots else 2
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--session-minutes", type=int, default=0,
+                    help="stay alive this long, following the half-hour + evening timetable, publishing as it goes")
     ap.add_argument("--out", default=".", help="folder that receives data/ (default: current folder)")
     ap.add_argument("--tag", default="manual", help="label stored in every row and in the file name")
     ap.add_argument("--every", type=int, default=0, help="seconds between snapshots (0 = one snapshot)")
@@ -290,6 +351,9 @@ def main():
     session.headers["User-Agent"] = "btc-option-quotes-collector (public market data, research)"
     settle = settlement_times(session)
     log(f"settlement times from /v2/products: {len(settle)} BTC options")
+
+    if a.session_minutes:
+        return run_session(session, settle, a.out, a.session_minutes)
 
     now = datetime.now(UTC)
     if not a.every:

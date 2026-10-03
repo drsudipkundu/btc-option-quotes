@@ -1,0 +1,48 @@
+# The collector. GitHub starts short scheduled jobs late or skips them (on 2-3 Oct 2026 only 3 of ~35
+# half-hourly runs started), so ONE job stays alive ~5.5 hours and keeps its own timetable:
+#   * a snapshot every :00 and :30 UTC, all day
+#   * a snapshot EVERY MINUTE 17:08-17:47 IST (covered-call buy-back 17:20-17:29, sale 17:35)
+# publishing to the repo after each one. When it ends it starts the next run itself (workflow_dispatch),
+# so the chain does not depend on GitHub's scheduler. The hourly cron is only a backup that restarts the
+# chain if it ever breaks. "concurrency" guarantees only one collector runs at a time; an extra start just
+# waits in the queue (and is cancelled if a newer one replaces it -- that is normal).
+name: collector
+
+on:
+  schedule:
+    - cron: "17 * * * *"      # backup restart; off the busy :00/:30 minutes
+  workflow_dispatch:
+
+permissions:
+  contents: write             # commit data
+  actions: write              # start the next collector run (this repository only)
+
+concurrency:
+  group: collector
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet requests
+      - name: Git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Audit yesterday (half-hours + evening minutes with no snapshot)
+        run: python audit.py _out "$(date -u -d yesterday +%Y-%m-%d)"
+        continue-on-error: true
+      - name: Collect for ~5.5 hours
+        run: python collector.py --out _out --session-minutes 330
+        continue-on-error: true
+      - name: Start the next run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run collector.yml --ref main
