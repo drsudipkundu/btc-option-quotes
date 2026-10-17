@@ -3,6 +3,7 @@ merge_month.py -- turn every FINISHED month's small CSV files into one Parquet f
 
     data/YYYY/MM/DD/quotes_*.csv.gz   ->  parquet/YYYY-MM.parquet
     data/YYYY/MM/DD/missing.csv       ->  parquet/YYYY-MM_missing.csv
+    data/YYYY/MM/DD/deribit_*.csv.gz  ->  parquet/YYYY-MM_deribit.parquet   (since Oct-2026)
 
 Safety: the Parquet is written to a temp name, read back, and its row count must equal the sum of the
 CSV rows (plus any rows already in an earlier Parquet for that month) before anything is deleted.
@@ -39,6 +40,21 @@ def merge(month_dir, year, month):
         os.remove(tmp)
         raise RuntimeError(f"{tag}: row count check failed -- nothing deleted")
     os.replace(tmp, target)
+
+    dfiles = sorted(glob.glob(os.path.join(month_dir, "*", "deribit_*.csv.gz")))
+    if dfiles:
+        dtarget = os.path.join("parquet", f"{tag}_deribit.parquet")
+        dparts = ([pd.read_parquet(dtarget)] if os.path.exists(dtarget) else []) + \
+                 [pd.read_csv(f, dtype={"instrument": "string", "kind": "string", "type": "string"}) for f in dfiles]
+        dd = pd.concat(dparts, ignore_index=True)
+        for c in ("ts_utc", "fetch_utc", "expiry_utc"):
+            dd[c] = pd.to_datetime(dd[c], utc=True, format="ISO8601")
+        dexp = len(dd)
+        dd.to_parquet(dtarget + ".tmp", index=False, compression="zstd")
+        if len(pd.read_parquet(dtarget + ".tmp")) != dexp:
+            os.remove(dtarget + ".tmp")
+            raise RuntimeError(f"{tag}: deribit row count check failed -- nothing deleted")
+        os.replace(dtarget + ".tmp", dtarget)
 
     miss = sorted(glob.glob(os.path.join(month_dir, "*", "missing.csv")))
     mtarget = os.path.join("parquet", f"{tag}_missing.csv")

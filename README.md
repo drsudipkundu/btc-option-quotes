@@ -6,7 +6,8 @@ greeks, open interest) from Delta Exchange India's public market-data API, recor
 **What this repository contains:** only public market data that anyone can read from
 `https://api.india.delta.exchange` without logging in, plus the scripts that collect it.
 **It contains no API keys, no passwords, no account data, no orders and no personal information.**
-The collector never logs in and cannot trade.
+The collector never logs in and cannot trade. Since 17-Oct-2026 it also stores Deribit's public
+DVOL index and BTC option summary (`https://www.deribit.com/api/v2/public`, no login) every half hour.
 
 Purpose: Delta keeps no history of bid/ask quotes, so this archive records them going forward, to
 measure the real cost of selling and buying back short-dated covered calls and buying protective puts.
@@ -20,7 +21,9 @@ started), so one `collector.yml` job stays alive about 5.5 hours and keeps its o
 | What | When |
 |---|---|
 | one snapshot | every :00 and :30 UTC, all day |
-| one snapshot every minute | 17:08-17:47 IST (covered-call buy-back 17:20-17:29, sale 17:35) |
+| one snapshot every minute | 17:00-17:47 IST (settlement average 17:00-17:30, covered-call buy-back 17:20-17:29, sale 17:35; 17:08 start until 17-Oct-2026) |
+| one snapshot every minute | 23:15-23:45 IST, tag `night` (night-leg entry 23:30; since 17-Oct-2026) |
+| Deribit DVOL + BTC option chain | every :00 and :30 UTC (since 17-Oct-2026) -> `deribit_HHMM.csv.gz` |
 | audit of yesterday | start of every run: half-hours and evening minutes with no snapshot -> `missing.csv` |
 
 Each run publishes after every snapshot (after the whole evening window for the minute snapshots) and,
@@ -32,17 +35,19 @@ month into `parquet/YYYY-MM.parquet` and deletes its CSVs.
 ## Files
 
 ```
-data/YYYY/MM/DD/quotes_HHMM_<tag>.csv.gz   one snapshot (UTC date and time); tag = halfhour | evening
+data/YYYY/MM/DD/quotes_HHMM_<tag>.csv.gz   one snapshot (UTC date and time); tag = halfhour | evening | night
+data/YYYY/MM/DD/deribit_HHMM.csv.gz        Deribit: one DVOL row (kind=DVOL) + options <= 120 days, +-20 % (kind=OPT)
 data/YYYY/MM/DD/missing.csv                slots that were not captured, with the reason
 parquet/YYYY-MM.parquet                    a finished month, all snapshots in one file
 parquet/YYYY-MM_missing.csv                that month's missing slots
+parquet/YYYY-MM_deribit.parquet            that month's Deribit snapshots
 ```
 
 ## Which contracts
 
 Per snapshot, from the live chain: the **current and next daily** expiry (the two nearest), the
-**current and next weekly** (two nearest Fridays), and the **current monthly** (nearest last-Friday
-expiry), strikes from **spot -25 % to spot +15 %**, calls and puts, plus one `BTCUSD` perpetual row.
+**current and next weekly** (two nearest Fridays), the **current monthly** (nearest last-Friday
+expiry), and since 17-Oct-2026 the **next monthly** (`month2`) and nearest **quarterly** (`quarterly`), strikes from **spot -25 % to spot +15 %**, calls and puts, plus one `BTCUSD` perpetual row.
 About 310 option rows per snapshot. All BTC options settle at 12:00 UTC (17:30 IST).
 
 ## Columns
@@ -55,7 +60,7 @@ About 310 option rows per snapshot. All BTC options settle at 12:00 UTC (17:30 I
 | `tag` | which workflow took it |
 | `symbol`, `type`, `strike` | e.g. `C-BTC-88800-031026`, `C` / `P` / `PERP` |
 | `expiry_utc`, `minutes_to_expiry` | settlement time and minutes left |
-| `expiry_tags` | why it was kept: `daily1`, `daily2`, `weekly1`, `weekly2`, `monthly` (can be several, joined by `|`) |
+| `expiry_tags` | why it was kept: `daily1`, `daily2`, `weekly1`, `weekly2`, `monthly`, `month2`, `quarterly` (can be several, joined by `|`) |
 | `spot` | BTC index price |
 | `best_bid`, `best_ask` | top of book in USD; **empty if that side had no order -- never filled in** |
 | `bid_size`, `ask_size` | quoted size in contracts (1 contract = 0.001 BTC) |

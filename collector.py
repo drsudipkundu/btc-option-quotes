@@ -3,7 +3,7 @@ collector.py -- snapshot(s) of live BTC option + BTCUSD perpetual quotes from De
 
 Runs on GitHub Actions (.github/workflows/collector.yml), but works the same on any PC:
     python collector.py --out _out --session-minutes 330             # GitHub: ~5.5 h, half-hourly +
-                                                                     # every minute 17:08-17:47 IST
+                                                                     # every minute 17:00-17:47 and 23:15-23:45 IST
     python collector.py --out _out --tag halfhour                       # one snapshot
     python collector.py --out _out --tag evening --every 60 \
                         --from-ist 17:08 --until-ist 17:47              # one per minute in a window
@@ -14,10 +14,12 @@ Public endpoints only, NO API key, no account, no orders:
     GET /v2/products (once per run -> settlement_time per symbol; falls back to the symbol's date)
 
 Which contracts are kept (decided per snapshot, from the live chain itself):
-    * expiries: current daily, next daily, current weekly, next weekly, current monthly
+    * expiries: current daily, next daily, current weekly, next weekly, current monthly,
+      next monthly (tag month2) and nearest quarterly (tag quarterly) -- the last two since 17-Oct-2026
         - "daily"   = the two nearest expiries of any kind
         - "weekly"  = the two nearest Friday expiries
-        - "monthly" = the nearest expiry that is the LAST Friday of its month
+        - "monthly" = the nearest expiry that is the LAST Friday of its month; "month2" = the one after
+        - "quarterly" = the nearest last-Friday expiry in Mar/Jun/Sep/Dec
       (they overlap on some days -- a contract is stored once, with every tag that applies)
     * strikes from spot -25 % to spot +15 %
     * plus one BTCUSD perpetual row (opt_type = PERP)
@@ -30,6 +32,8 @@ Facts verified against the live API (2026-09-20 and 2026-10-02):
 Output (never invented, never filled):
     <out>/data/YYYY/MM/DD/quotes_<HHMM>_<tag>.csv.gz     one file per snapshot, UTC date and time
     <out>/data/YYYY/MM/DD/missing.csv                    one row per failed / skipped slot
+    <out>/data/YYYY/MM/DD/deribit_<HHMM>.csv.gz          every :00/:30 UTC (since 17-Oct-2026): Deribit DVOL,
+                                                         index and BTC options <= 120 days, strikes +-20 %
 The tag in the file name keeps the two workflows from ever writing the same file.
 """
 import argparse
@@ -142,14 +146,19 @@ def is_last_friday(d):
 
 
 def choose_expiries(expiries, now):
-    """expiries: set of live expiry datetimes -> {expiry: 'daily1|weekly1|...'} for the ones we keep."""
+    """expiries: set of live expiry datetimes -> {expiry: 'daily1|weekly1|...'} for the ones we keep.
+    Tags: daily1/2, weekly1/2, monthly (current), month2 (next monthly, added 17-Oct-2026),
+    quarterly (nearest Mar/Jun/Sep/Dec last-Friday expiry, added 17-Oct-2026). 'month2' and 'quarterly'
+    deliberately do not contain the word 'monthly', so older filters on 'monthly' still mean the current one."""
     future = sorted(e for e in expiries if e > now)
     fridays = [e for e in future if e.weekday() == 4]
     monthly = [e for e in fridays if is_last_friday(e)]
+    quarterly = [e for e in monthly if e.month in (3, 6, 9, 12)]
     tags = {}
-    for name, picks in (("daily", future[:2]), ("weekly", fridays[:2]), ("monthly", monthly[:1])):
+    for name, picks in (("daily", future[:2]), ("weekly", fridays[:2]), ("monthly", monthly[:1]),
+                        ("month2", monthly[1:2]), ("quarterly", quarterly[:1])):
         for i, e in enumerate(picks, 1):
-            tags.setdefault(e, []).append(f"{name}{i}" if name != "monthly" else name)
+            tags.setdefault(e, []).append(f"{name}{i}" if name in ("daily", "weekly") else name)
     return {e: "|".join(t) for e, t in tags.items()}
 
 
@@ -281,20 +290,97 @@ def ist_today_at(hhmm, now):
     return now.astimezone(IST).replace(hour=h, minute=m, second=0, microsecond=0).astimezone(UTC)
 
 
-DENSE_IST = ("17:08", "17:47")      # every-minute window (covered-call buy-back 17:20-17:29, sale 17:35)
+# Every-minute windows (IST, inclusive) and the tag used for them:
+#   evening 17:00-17:47  settlement TWAP 17:00-17:30 (spot column), covered-call buy-back 17:20-17:29, sale 17:35
+#                        (started at 17:08 until 17-Oct-2026)
+#   night   23:15-23:45  night-leg entry at 23:30 (added 17-Oct-2026)
+DENSE_IST = (("17:00", "17:47", "evening"), ("23:15", "23:45", "night"))
+
+
+def dense_tag(t):
+    hm = t.astimezone(IST).strftime("%H:%M")
+    for lo, hi, tag in DENSE_IST:
+        if lo <= hm <= hi:
+            return tag
+    return None
 
 
 def session_slots(start, end):
-    """Timetable for one session: every minute inside DENSE_IST, otherwise every :00 / :30 UTC."""
+    """Timetable for one session: every minute inside a DENSE_IST window, otherwise every :00 / :30 UTC."""
     slots, t = [], start.replace(second=0, microsecond=0) + timedelta(minutes=1)
     while t < end:
-        hm = t.astimezone(IST).strftime("%H:%M")
-        if DENSE_IST[0] <= hm <= DENSE_IST[1]:
-            slots.append((t, "evening"))
+        tag = dense_tag(t)
+        if tag:
+            slots.append((t, tag))
         elif t.minute in (0, 30):
             slots.append((t, "halfhour"))
         t += timedelta(minutes=1)
     return slots
+
+
+# ---------------- Deribit (added 17-Oct-2026): DVOL + BTC option chain, best effort ----------------
+DERIBIT = "https://www.deribit.com/api/v2/public"
+DERIBIT_COLUMNS = ["ts_utc", "ts_ist", "fetch_utc", "kind", "instrument", "type", "strike", "expiry_utc",
+                   "days_to_expiry", "underlying", "index", "mark_iv", "bid_btc", "ask_btc", "mark_btc",
+                   "oi", "volume_24h", "dvol"]
+DERIBIT_MAX_DAYS, DERIBIT_BAND_PCT = 120, 20.0
+DERIBIT_RE = re.compile(r"^BTC-(\d{1,2}[A-Z]{3}\d{2})-(\d+)-([CP])$")
+
+
+def deribit_get(session, path, params, fast=False):
+    last = None
+    for wait in ((0,) if fast else (0, 3, 8)):
+        time.sleep(wait)
+        try:
+            r = session.get(f"{DERIBIT}/{path}", params=params, timeout=8 if fast else HTTP_TIMEOUT_S)
+            if r.status_code == 200 and "result" in r.json():
+                return r.json()["result"]
+            last = f"HTTP {r.status_code}"
+        except (requests.RequestException, ValueError) as exc:
+            last = f"{type(exc).__name__}: {exc}"
+    raise CaptureError(f"deribit {path}: {last}")
+
+
+def deribit_snapshot(session, out, slot, fast=False):
+    """DVOL + index + BTC options (expiry <= 120 days, strike within +-20 % of the underlying) -> one gz CSV.
+    Never raises: a failure is only logged, so it can never cost a Delta snapshot."""
+    try:
+        now = datetime.now(UTC)
+        base = {"ts_utc": slot.isoformat(), "ts_ist": slot.astimezone(IST).isoformat(), "fetch_utc": now.isoformat()}
+        end_ms = int(now.timestamp() * 1000)
+        dv = deribit_get(session, "get_volatility_index_data",
+                         {"currency": "BTC", "start_timestamp": end_ms - 3_600_000, "end_timestamp": end_ms,
+                          "resolution": "60"}, fast)
+        dvol = num(dv["data"][-1][4]) if dv.get("data") else None
+        idx = num(deribit_get(session, "get_index_price", {"index_name": "btc_usd"}, fast).get("index_price"))
+        rows = [{**base, "kind": "DVOL", "index": idx, "dvol": dvol}]
+        for o in deribit_get(session, "get_book_summary_by_currency", {"currency": "BTC", "kind": "option"}, fast):
+            m = DERIBIT_RE.match(o.get("instrument_name", ""))
+            und = num(o.get("underlying_price"))
+            if not m or not und:
+                continue
+            exp = datetime.strptime(m.group(1), "%d%b%y").replace(hour=8, tzinfo=UTC)
+            days = (exp - now).total_seconds() / 86400
+            strike = float(m.group(2))
+            if days <= 0 or days > DERIBIT_MAX_DAYS or abs(strike / und - 1) * 100 > DERIBIT_BAND_PCT:
+                continue
+            rows.append({**base, "kind": "OPT", "instrument": o["instrument_name"], "type": m.group(3),
+                         "strike": strike, "expiry_utc": exp.isoformat(), "days_to_expiry": round(days, 4),
+                         "underlying": und, "index": idx, "mark_iv": num(o.get("mark_iv")),
+                         "bid_btc": num(o.get("bid_price")), "ask_btc": num(o.get("ask_price")),
+                         "mark_btc": num(o.get("mark_price")), "oi": num(o.get("open_interest")),
+                         "volume_24h": num(o.get("volume")), "dvol": dvol})
+        path = os.path.join(day_dir(out, slot), f"deribit_{slot:%H%M}.csv.gz")
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=DERIBIT_COLUMNS, lineterminator="\n")
+        w.writeheader()
+        w.writerows(rows)
+        with gzip.open(path + ".tmp", "wt", encoding="utf-8", compresslevel=9) as f:
+            f.write(buf.getvalue())
+        os.replace(path + ".tmp", path)
+        log(f"deribit OK {slot:%H:%M}Z dvol={dvol} options={len(rows) - 1}")
+    except Exception as exc:                                         # noqa: BLE001
+        log(f"deribit skipped {slot:%H:%M}Z: {type(exc).__name__}: {exc}")
 
 
 def publish(out, label):
@@ -328,8 +414,10 @@ def run_session(session, settle, out, minutes):
             ok += 1
         else:
             bad += 1
+        if slot.minute in (0, 30):                                   # Deribit every half hour, after Delta
+            deribit_snapshot(session, out, slot, fast=tag != "halfhour")   # inside a minute window: no retries
         next_tag = slots[i + 1][1] if i + 1 < len(slots) else None
-        if tag == "halfhour" or next_tag != "evening":
+        if tag == "halfhour" or next_tag != tag:
             publish(out, f"{tag} {slot:%Y-%m-%dT%H:%MZ}")
     publish(out, f"session end {datetime.now(UTC):%Y-%m-%dT%H:%MZ}")
     log(f"session done: {ok} snapshots, {bad} missing")
