@@ -39,7 +39,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def load(root, start, end):
-    frames = [pd.read_parquet(p) for p in sorted(glob.glob(os.path.join(root, "parquet", "*.parquet")))]
+    frames = [pd.read_parquet(p) for p in sorted(glob.glob(os.path.join(root, "parquet", "*.parquet"))) if "deribit" not in os.path.basename(p)]
     frames += [pd.read_csv(p) for p in sorted(glob.glob(os.path.join(root, "data", "*", "*", "*", "quotes_*.csv.gz")))]
     if not frames:
         sys.exit(f"no snapshots found under {root}")

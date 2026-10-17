@@ -30,7 +30,7 @@ Each run publishes after every snapshot (after the whole evening window for the 
 when it ends, starts the next run itself. An hourly schedule (minute 17) only restarts the chain if it
 ever breaks. Only one collector runs at a time; an extra start waits, or shows as *cancelled* when a newer
 one replaces it -- that is normal. `monthly.yml` (2nd of each month, 03:00 UTC) merges the finished
-month into `parquet/YYYY-MM.parquet` and deletes its CSVs.
+month into `parquet/YYYY-MM-a.parquet` + `-b.parquet` (two files: GitHub refuses any file over 100 MB) and deletes its CSVs.
 
 ## Files
 
@@ -38,7 +38,7 @@ month into `parquet/YYYY-MM.parquet` and deletes its CSVs.
 data/YYYY/MM/DD/quotes_HHMM_<tag>.csv.gz   one snapshot (UTC date and time); tag = halfhour | evening | night
 data/YYYY/MM/DD/deribit_HHMM.csv.gz        Deribit: one DVOL row (kind=DVOL) + options <= 120 days, +-20 % (kind=OPT)
 data/YYYY/MM/DD/missing.csv                slots that were not captured, with the reason
-parquet/YYYY-MM.parquet                    a finished month, all snapshots in one file
+parquet/YYYY-MM-a.parquet, -b.parquet     a finished month (days 1-15 / 16-end; before Nov-2026 one YYYY-MM.parquet)
 parquet/YYYY-MM_missing.csv                that month's missing slots
 parquet/YYYY-MM_deribit.parquet            that month's Deribit snapshots
 ```

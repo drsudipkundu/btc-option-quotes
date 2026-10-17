@@ -1,7 +1,8 @@
 r"""
 merge_month.py -- turn every FINISHED month's small CSV files into one Parquet file, then delete the CSVs.
 
-    data/YYYY/MM/DD/quotes_*.csv.gz   ->  parquet/YYYY-MM.parquet
+    data/YYYY/MM/DD/quotes_*.csv.gz   ->  parquet/YYYY-MM-a.parquet (days 1-15) + YYYY-MM-b.parquet (16-end)
+                                          (two files because GitHub refuses any file over 100 MB)
     data/YYYY/MM/DD/missing.csv       ->  parquet/YYYY-MM_missing.csv
     data/YYYY/MM/DD/deribit_*.csv.gz  ->  parquet/YYYY-MM_deribit.parquet   (since Oct-2026)
 
@@ -18,18 +19,23 @@ from datetime import datetime, timezone
 import pandas as pd
 
 
-def merge(month_dir, year, month):
-    tag = f"{year}-{month}"
-    files = sorted(glob.glob(os.path.join(month_dir, "*", "quotes_*.csv.gz")))
+HALVES = (("a", range(1, 16)), ("b", range(16, 32)))   # GitHub refuses files > 100 MB -> two files a month
+
+
+def merge_quotes(month_dir, tag, half, days):
+    """quotes of days `days` -> parquet/<tag>-<half>.parquet (since Oct-2026; older months are one file)."""
+    files = sorted(f for f in glob.glob(os.path.join(month_dir, "*", "quotes_*.csv.gz"))
+                   if int(os.path.basename(os.path.dirname(f))) in days)
     frames = [pd.read_csv(f, dtype={"expiry_tags": "string", "tag": "string"}) for f in files]
-    target = os.path.join("parquet", f"{tag}.parquet")
+    target = os.path.join("parquet", f"{tag}-{half}.parquet")
     if os.path.exists(target):                                     # late files for an already-merged month
         frames.insert(0, pd.read_parquet(target))
     if not frames:
-        return f"{tag}: no snapshot files"
+        return 0, 0, None
     df = pd.concat(frames, ignore_index=True)
     for c in ("ts_utc", "fetch_utc", "api_ts_utc", "expiry_utc"):
         df[c] = pd.to_datetime(df[c], utc=True, format="ISO8601")
+    df = df.drop_duplicates(subset=["ts_utc", "symbol", "tag"])     # a re-run after a partial failure adds nothing twice
     df = df.sort_values(["ts_utc", "symbol"], kind="stable").reset_index(drop=True)
     expected = len(df)
 
@@ -40,6 +46,20 @@ def merge(month_dir, year, month):
         os.remove(tmp)
         raise RuntimeError(f"{tag}: row count check failed -- nothing deleted")
     os.replace(tmp, target)
+    if os.path.getsize(target) > 95e6:
+        raise RuntimeError(f"{target} is {os.path.getsize(target)/1e6:.0f} MB -- over GitHub's limit; nothing deleted")
+    return len(files), expected, target
+
+
+def merge(month_dir, year, month):
+    tag = f"{year}-{month}"
+    report = []
+    for half, days in HALVES:
+        n, rows, target = merge_quotes(month_dir, tag, half, days)
+        if target:
+            report.append(f"{n} files, {rows:,} rows -> {target} ({os.path.getsize(target)/1e6:.1f} MB)")
+    if not report:
+        return f"{tag}: no snapshot files"
 
     dfiles = sorted(glob.glob(os.path.join(month_dir, "*", "deribit_*.csv.gz")))
     if dfiles:
@@ -49,6 +69,7 @@ def merge(month_dir, year, month):
         dd = pd.concat(dparts, ignore_index=True)
         for c in ("ts_utc", "fetch_utc", "expiry_utc"):
             dd[c] = pd.to_datetime(dd[c], utc=True, format="ISO8601")
+        dd = dd.drop_duplicates(subset=["ts_utc", "kind", "instrument"])
         dexp = len(dd)
         dd.to_parquet(dtarget + ".tmp", index=False, compression="zstd")
         if len(pd.read_parquet(dtarget + ".tmp")) != dexp:
@@ -63,7 +84,7 @@ def merge(month_dir, year, month):
         pd.concat(parts, ignore_index=True).to_csv(mtarget, index=False)
 
     shutil.rmtree(month_dir)
-    return f"{tag}: {len(files)} snapshot files, {expected:,} rows -> {target} ({os.path.getsize(target)/1e6:.1f} MB)"
+    return f"{tag}: " + "; ".join(report)
 
 
 def main():
