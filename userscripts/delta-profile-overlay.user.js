@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Delta BTCUSD – Volume profile + Option OI overlay (Sudip)
 // @namespace    sudip.btc.ladder
-// @version      1.5
+// @version      1.6
 // @description  Draws a volume profile (left), estimated liquidation clusters (left-centre) and BTC option open interest by strike (right) as horizontal bars on the Delta Exchange BTCUSD chart. Read-only public market data; never places or touches orders.
 // @match        https://www.delta.exchange/app/futures/trade/BTC/BTCUSD*
 // @match        https://india.delta.exchange/app/futures/trade/BTC/BTCUSD*
@@ -98,7 +98,7 @@
       const lo = Math.floor(k.low / CFG.vpBin), hi = Math.floor(k.high / CFG.vpBin), n = hi - lo + 1;
       for (let b = lo; b <= hi; b++) bins.set(b, (bins.get(b) || 0) + k.volume / n);
     }
-    bins.last = cs.length ? cs[cs.length - 1].close : 0;
+    bins.last = cs.length ? cs.reduce((a, k) => (k.time > a.time ? k : a)).close : 0;   // Delta returns newest first
     return bins;
   }
   async function optionOI(spot) {
