@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Delta BTCUSD – Volume profile + Option OI overlay (Sudip)
 // @namespace    sudip.btc.ladder
-// @version      1.3
-// @description  Draws a volume profile (left) and BTC option open interest by strike (right) as horizontal bars on the Delta Exchange BTCUSD chart. Read-only public market data; never places or touches orders.
+// @version      1.4
+// @description  Draws a volume profile (left), estimated liquidation clusters (left-centre) and BTC option open interest by strike (right) as horizontal bars on the Delta Exchange BTCUSD chart. Read-only public market data; never places or touches orders.
 // @match        https://www.delta.exchange/app/futures/trade/BTC/BTCUSD*
 // @match        https://india.delta.exchange/app/futures/trade/BTC/BTCUSD*
 // @grant        none
@@ -38,7 +38,19 @@
     callColor: 'rgba(244,67,54,0.45)',
     putColor: 'rgba(0,150,136,0.45)',
     oiLabelsTop: 3,           // label the N biggest call and put strikes
-    oiMinPct: 8,              // hide strikes whose OI is below N % of the biggest strike (removes equal-looking stubs)
+    oiMinPct: 8,              // hide strikes whose OI is below N % of the biggest strike
+    // estimated liquidation clusters (Binance BTCUSDT open interest + long/short accounts, same model as liquidation-clusters tool)
+    liqOn: true,
+    liqStartPct: 24,          // bars start this % from the left edge (just right of the volume profile)
+    liqWidthPct: 20,
+    liqBin: 200,
+    liqRangePct: 12,
+    liqMinPct: 8,
+    liqBuckets: [[10, 0.35], [25, 0.30], [50, 0.20], [100, 0.15]],   // assumed leverage mix
+    liqMmr: 0.004,
+    longLiqColor: 'rgba(255,87,34,0.55)',    // longs that get liquidated (below price)
+    shortLiqColor: 'rgba(76,175,80,0.55)',   // shorts that get liquidated (above price)
+    liqLabelsTop: 2,          // label the N biggest long and short clusters
   };
   const TAG = '§';            // every shape this script draws has text starting with §
 
@@ -62,12 +74,13 @@
       try { const t = c.getShapeById(s.id).getProperties().text || ''; if (t.startsWith(TAG)) c.removeEntity(s.id); } catch (e) {}
     }
   }
-  function bar(c, side, vr, frac, p1, p2, color, text) {
+  function bar(c, side, vr, frac, p1, p2, color, text, offPct) {
     const span = vr.to - vr.from;
     const len = Math.max(span * frac, span * 0.003);
     const R = Math.min(vr.to, Math.floor(Date.now() / 1000));   // right edge = last candle (future area snaps coarsely)
-    const a = side === 'left' ? vr.from : R - len;
-    const b = side === 'left' ? vr.from + len : R;
+    const L0 = vr.from + span * (offPct || 0) / 100;
+    const a = side === 'left' ? L0 : R - len;
+    const b = side === 'left' ? L0 + len : R;
     return c.createMultipointShape([{ time: Math.round(a), price: p1 }, { time: Math.round(b), price: p2 }], {
       shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
       overrides: { backgroundColor: color, color: 'rgba(0,0,0,0)', fillBackground: true, linewidth: 0,
@@ -101,6 +114,40 @@
     return { call, put };
   }
 
+
+  async function liquidation() {
+    const B = 'https://fapi.binance.com';
+    const g = async u => (await fetch(B + u)).json();
+    const [oi, ls, kl] = await Promise.all([
+      g('/futures/data/openInterestHist?symbol=BTCUSDT&period=1h&limit=500'),
+      g('/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=500'),
+      g('/fapi/v1/klines?symbol=BTCUSDT&interval=1h&limit=500')]);
+    const oiT = new Map(oi.map(r => [Math.floor(r.timestamp / 3600000), +r.sumOpenInterest]));
+    const lsT = new Map(ls.map(r => [Math.floor(r.timestamp / 3600000), +r.longAccount]));
+    let cl = [];   // {p, q, long}
+    let prev = null;
+    for (const k of kl) {
+      const h = Math.floor(k[0] / 3600000) + 1;       // OI stamped at the close of this candle
+      const hi = +k[2], lo = +k[3], close = +k[4];
+      cl = cl.filter(x => x.long ? x.p < lo : x.p > hi);   // price traded through -> liquidated
+      const o = oiT.get(h); if (o == null) continue;
+      if (prev != null) {
+        const d = o - prev;
+        if (d > 0) {
+          const lf = lsT.has(h) ? lsT.get(h) : 0.5;
+          for (const [L, w] of CFG.liqBuckets) {
+            cl.push({ p: close * (1 - 1 / L + CFG.liqMmr), q: d * lf * w, long: true });
+            cl.push({ p: close * (1 + 1 / L - CFG.liqMmr), q: d * (1 - lf) * w, long: false });
+          }
+        } else if (d < 0 && prev > 0) { const f = o / prev; for (const x of cl) x.q *= f; }
+      }
+      prev = o;
+    }
+    const lb = new Map(), sb = new Map();
+    for (const x of cl) { const m = x.long ? lb : sb; const b = Math.floor(x.p / CFG.liqBin); m.set(b, (m.get(b) || 0) + x.q); }
+    return { lb, sb };
+  }
+
   async function draw() {
     const c = await getChart(); if (!c) return;
     const vr = c.getVisibleRange();
@@ -128,6 +175,23 @@
                                      tc.includes(k) ? `CE ${k} OI ${v.toFixed(1)} BTC` : '');
       for (const [k, v] of put) if (v / max * 100 >= CFG.oiMinPct) bar(c, CFG.oiSide, vr, (v / max) * CFG.oiWidthPct / 100, k - h, k, CFG.putColor,
                                     tp.includes(k) ? `PE ${k} OI ${v.toFixed(1)} BTC` : '');
+    }
+    if (CFG.liqOn) {
+      try {
+        if (!spot) { const tk = await j(`${CFG.api}/tickers/BTCUSD`); spot = +tk.mark_price || spot; }
+        const { lb, sb } = await liquidation();
+        const inR = b => Math.abs((b + 0.5) * CFG.liqBin / spot - 1) * 100 <= CFG.liqRangePct;
+        const all = [...lb.entries(), ...sb.entries()].filter(([b]) => inR(b));
+        const max = Math.max(1e-9, ...all.map(x => x[1]));
+        const top = m => [...m.entries()].filter(([b]) => inR(b)).sort((a, b) => b[1] - a[1]).slice(0, CFG.liqLabelsTop).map(x => x[0]);
+        const tl = top(lb), ts = top(sb);
+        for (const [m, col, tops, nm] of [[lb, CFG.longLiqColor, tl, 'Long liq'], [sb, CFG.shortLiqColor, ts, 'Short liq']])
+          for (const [b, v] of m) {
+            if (!inR(b) || v / max * 100 < CFG.liqMinPct) continue;
+            bar(c, 'left', vr, (v / max) * CFG.liqWidthPct / 100, b * CFG.liqBin, (b + 1) * CFG.liqBin, col,
+                tops.includes(b) ? `${nm} ${b * CFG.liqBin + CFG.liqBin / 2} ~${v.toFixed(0)} BTC` : '', CFG.liqStartPct);
+          }
+      } catch (e) { console.warn('liq overlay', e); }
     }
   }
 
