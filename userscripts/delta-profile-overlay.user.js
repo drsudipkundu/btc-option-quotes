@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Delta BTCUSD – Volume profile + Option OI overlay (Sudip)
 // @namespace    sudip.btc.ladder
-// @version      1.4
+// @version      1.5
 // @description  Draws a volume profile (left), estimated liquidation clusters (left-centre) and BTC option open interest by strike (right) as horizontal bars on the Delta Exchange BTCUSD chart. Read-only public market data; never places or touches orders.
 // @match        https://www.delta.exchange/app/futures/trade/BTC/BTCUSD*
 // @match        https://india.delta.exchange/app/futures/trade/BTC/BTCUSD*
@@ -23,8 +23,9 @@
     // volume profile
     vpOn: true,
     vpSide: 'left',           // 'left' or 'right'
-    vpDays: 7,                // look-back in days
-    vpRes: '15m',             // candle size used to build the profile
+    vpDays: 90,               // look-back in days (long enough to cover the liquidation range)
+    vpRangePct: 12,           // show rows within ±N % of price (same as liquidation)
+    vpRes: '4h',              // candle size used to build the profile
     vpBin: 200,               // USD per price row
     vpWidthPct: 22,           // longest bar = this % of visible chart width
     vpColor: 'rgba(158,158,158,0.30)',
@@ -97,6 +98,7 @@
       const lo = Math.floor(k.low / CFG.vpBin), hi = Math.floor(k.high / CFG.vpBin), n = hi - lo + 1;
       for (let b = lo; b <= hi; b++) bins.set(b, (bins.get(b) || 0) + k.volume / n);
     }
+    bins.last = cs.length ? cs[cs.length - 1].close : 0;
     return bins;
   }
   async function optionOI(spot) {
@@ -155,10 +157,13 @@
     let spot = 0;
     if (CFG.vpOn) {
       const bins = await volumeProfile();
-      const max = Math.max(...bins.values());
+      const vpIn = b => !bins.last || Math.abs((b + 0.5) * CFG.vpBin / bins.last - 1) * 100 <= CFG.vpRangePct;
+      const inb = [...bins.entries()].filter(([b]) => vpIn(b));
+      const max = Math.max(1e-9, ...inb.map(x => x[1]));
       let poc = null, pv = -1;
-      for (const [b, v] of bins) if (v > pv) { pv = v; poc = b; }
+      for (const [b, v] of inb) if (v > pv) { pv = v; poc = b; }
       for (const [b, v] of bins) {
+        if (!vpIn(b)) continue;
         bar(c, CFG.vpSide, vr, (v / max) * CFG.vpWidthPct / 100, b * CFG.vpBin, (b + 1) * CFG.vpBin,
             b === poc ? CFG.vpPocColor : CFG.vpColor, b === poc ? 'POC ' + (b * CFG.vpBin + CFG.vpBin / 2) : '');
       }
