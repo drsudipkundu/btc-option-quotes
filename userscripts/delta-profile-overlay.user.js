@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Delta BTCUSD – Volume profile + Option OI overlay (Sudip)
 // @namespace    sudip.btc.ladder
-// @version      1.2
+// @version      1.3
 // @description  Draws a volume profile (left) and BTC option open interest by strike (right) as horizontal bars on the Delta Exchange BTCUSD chart. Read-only public market data; never places or touches orders.
 // @match        https://www.delta.exchange/app/futures/trade/BTC/BTCUSD*
 // @match        https://india.delta.exchange/app/futures/trade/BTC/BTCUSD*
@@ -38,6 +38,7 @@
     callColor: 'rgba(244,67,54,0.45)',
     putColor: 'rgba(0,150,136,0.45)',
     oiLabelsTop: 3,           // label the N biggest call and put strikes
+    oiMinPct: 8,              // hide strikes whose OI is below N % of the biggest strike (removes equal-looking stubs)
   };
   const TAG = '§';            // every shape this script draws has text starting with §
 
@@ -64,8 +65,9 @@
   function bar(c, side, vr, frac, p1, p2, color, text) {
     const span = vr.to - vr.from;
     const len = Math.max(span * frac, span * 0.003);
-    const a = side === 'left' ? vr.from : vr.to - len;
-    const b = side === 'left' ? vr.from + len : vr.to;
+    const R = Math.min(vr.to, Math.floor(Date.now() / 1000));   // right edge = last candle (future area snaps coarsely)
+    const a = side === 'left' ? vr.from : R - len;
+    const b = side === 'left' ? vr.from + len : R;
     return c.createMultipointShape([{ time: Math.round(a), price: p1 }, { time: Math.round(b), price: p2 }], {
       shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
       overrides: { backgroundColor: color, color: 'rgba(0,0,0,0)', fillBackground: true, linewidth: 0,
@@ -122,9 +124,9 @@
       const top = (m) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, CFG.oiLabelsTop).map(x => x[0]);
       const tc = top(call), tp = top(put);
       const h = 60; // half-height of each strike bar in USD
-      for (const [k, v] of call) bar(c, CFG.oiSide, vr, (v / max) * CFG.oiWidthPct / 100, k, k + h, CFG.callColor,
+      for (const [k, v] of call) if (v / max * 100 >= CFG.oiMinPct) bar(c, CFG.oiSide, vr, (v / max) * CFG.oiWidthPct / 100, k, k + h, CFG.callColor,
                                      tc.includes(k) ? `CE ${k} OI ${v.toFixed(1)} BTC` : '');
-      for (const [k, v] of put) bar(c, CFG.oiSide, vr, (v / max) * CFG.oiWidthPct / 100, k - h, k, CFG.putColor,
+      for (const [k, v] of put) if (v / max * 100 >= CFG.oiMinPct) bar(c, CFG.oiSide, vr, (v / max) * CFG.oiWidthPct / 100, k - h, k, CFG.putColor,
                                     tp.includes(k) ? `PE ${k} OI ${v.toFixed(1)} BTC` : '');
     }
   }
