@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Delta BTCUSD – Volume profile + Option OI overlay (Sudip)
 // @namespace    sudip.btc.ladder
-// @version      1.6
+// @version      1.7
 // @description  Draws a volume profile (left), estimated liquidation clusters (left-centre) and BTC option open interest by strike (right) as horizontal bars on the Delta Exchange BTCUSD chart. Read-only public market data; never places or touches orders.
 // @match        https://www.delta.exchange/app/futures/trade/BTC/BTCUSD*
 // @match        https://india.delta.exchange/app/futures/trade/BTC/BTCUSD*
@@ -44,14 +44,19 @@
     liqOn: true,
     liqStartPct: 24,          // bars start this % from the left edge (just right of the volume profile)
     liqWidthPct: 20,
-    liqBin: 200,
+    liqBin: 100,              // USD per row (finer)
     liqRangePct: 12,
-    liqMinPct: 8,
+    liqMinPct: 3,             // hide rows below N % of the biggest row
+    liqHeatmap: true,         // Coinglass-style bands: from when the cluster formed until now
+    liqHeatMinPct: 6,         // only rows at least N % of the biggest get a band
+    liqHeatAlpha: [0.06, 0.40],
     liqBuckets: [[10, 0.35], [25, 0.30], [50, 0.20], [100, 0.15]],   // assumed leverage mix
     liqMmr: 0.004,
-    longLiqColor: 'rgba(255,87,34,0.55)',    // longs that get liquidated (below price)
-    shortLiqColor: 'rgba(76,175,80,0.55)',   // shorts that get liquidated (above price)
-    liqLabelsTop: 2,          // label the N biggest long and short clusters
+    // shades per leverage, lightest = 10x ... darkest = 100x (longs liquidated below price / shorts above)
+    longLevColors: ['255,204,128', '255,138,101', '244,81,30', '183,28,28'],
+    shortLevColors: ['200,230,201', '129,199,132', '56,142,60', '27,94,32'],
+    liqBarAlpha: 0.7,
+    liqLabelsTop: 4,          // label the N biggest long and short rows
   };
   const TAG = '§';            // every shape this script draws has text starting with §
 
@@ -138,16 +143,23 @@
         if (d > 0) {
           const lf = lsT.has(h) ? lsT.get(h) : 0.5;
           for (const [L, w] of CFG.liqBuckets) {
-            cl.push({ p: close * (1 - 1 / L + CFG.liqMmr), q: d * lf * w, long: true });
-            cl.push({ p: close * (1 + 1 / L - CFG.liqMmr), q: d * (1 - lf) * w, long: false });
+            const t = Math.floor(k[0] / 1000) + 3600;
+            cl.push({ p: close * (1 - 1 / L + CFG.liqMmr), q: d * lf * w, long: true, L, t });
+            cl.push({ p: close * (1 + 1 / L - CFG.liqMmr), q: d * (1 - lf) * w, long: false, L, t });
           }
         } else if (d < 0 && prev > 0) { const f = o / prev; for (const x of cl) x.q *= f; }
       }
       prev = o;
     }
-    const lb = new Map(), sb = new Map();
-    for (const x of cl) { const m = x.long ? lb : sb; const b = Math.floor(x.p / CFG.liqBin); m.set(b, (m.get(b) || 0) + x.q); }
-    return { lb, sb };
+    // rows: key = side|bin -> total, per-leverage split, size-weighted birth time
+    const rows = new Map();
+    const li = new Map(CFG.liqBuckets.map(([L], i) => [L, i]));
+    for (const x of cl) {
+      const b = Math.floor(x.p / CFG.liqBin), key = (x.long ? 'L' : 'S') + b;
+      let r = rows.get(key); if (!r) { r = { long: x.long, b, tot: 0, lev: CFG.liqBuckets.map(() => 0), ts: 0 }; rows.set(key, r); }
+      r.tot += x.q; r.lev[li.get(x.L)] += x.q; r.ts += x.q * x.t;
+    }
+    return [...rows.values()];
   }
 
   async function draw() {
@@ -184,18 +196,37 @@
     if (CFG.liqOn) {
       try {
         if (!spot) { const tk = await j(`${CFG.api}/tickers/BTCUSD`); spot = +tk.mark_price || spot; }
-        const { lb, sb } = await liquidation();
-        const inR = b => Math.abs((b + 0.5) * CFG.liqBin / spot - 1) * 100 <= CFG.liqRangePct;
-        const all = [...lb.entries(), ...sb.entries()].filter(([b]) => inR(b));
-        const max = Math.max(1e-9, ...all.map(x => x[1]));
-        const top = m => [...m.entries()].filter(([b]) => inR(b)).sort((a, b) => b[1] - a[1]).slice(0, CFG.liqLabelsTop).map(x => x[0]);
-        const tl = top(lb), ts = top(sb);
-        for (const [m, col, tops, nm] of [[lb, CFG.longLiqColor, tl, 'Long liq'], [sb, CFG.shortLiqColor, ts, 'Short liq']])
-          for (const [b, v] of m) {
-            if (!inR(b) || v / max * 100 < CFG.liqMinPct) continue;
-            bar(c, 'left', vr, (v / max) * CFG.liqWidthPct / 100, b * CFG.liqBin, (b + 1) * CFG.liqBin, col,
-                tops.includes(b) ? `${nm} ${b * CFG.liqBin + CFG.liqBin / 2} ~${v.toFixed(0)} BTC` : '', CFG.liqStartPct);
+        const rows = (await liquidation()).filter(r => Math.abs((r.b + 0.5) * CFG.liqBin / spot - 1) * 100 <= CFG.liqRangePct);
+        const max = Math.max(1e-9, ...rows.map(r => r.tot));
+        const topOf = lng => rows.filter(r => r.long === lng).sort((a, b) => b.tot - a.tot).slice(0, CFG.liqLabelsTop);
+        const tops = new Set([...topOf(true), ...topOf(false)]);
+        const span = vr.to - vr.from, x0 = vr.from + span * CFG.liqStartPct / 100;
+        const R = Math.min(vr.to, Math.floor(Date.now() / 1000));
+        for (const r of rows) {
+          if (r.tot / max * 100 < CFG.liqMinPct) continue;
+          const p1 = r.b * CFG.liqBin, p2 = p1 + CFG.liqBin, cols = r.long ? CFG.longLevColors : CFG.shortLevColors;
+          // heatmap band behind the candles, from the size-weighted time the cluster formed until now
+          if (CFG.liqHeatmap && r.tot / max * 100 >= CFG.liqHeatMinPct) {
+            const t0 = Math.max(vr.from, Math.round(r.ts / r.tot)), [a0, a1] = CFG.liqHeatAlpha;
+            const al = a0 + (a1 - a0) * Math.pow(r.tot / max, 0.8);
+            if (t0 < R) c.createMultipointShape([{ time: t0, price: p1 }, { time: R, price: p2 }], {
+              shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
+              overrides: { backgroundColor: `rgba(${cols[2]},${al.toFixed(2)})`, color: 'rgba(0,0,0,0)', fillBackground: true, linewidth: 0, text: TAG, showLabel: false } });
           }
+          // side profile: one segment per leverage, stacked left to right (10x lightest ... 100x darkest)
+          let x = x0;
+          const totLen = span * (r.tot / max) * CFG.liqWidthPct / 100;
+          r.lev.forEach((q, i) => {
+            if (q <= 0) return;
+            const len = Math.max(totLen * q / r.tot, span * 0.002), last = i === r.lev.length - 1 || r.lev.slice(i + 1).every(z => z <= 0);
+            const lab = last && tops.has(r) ? `${r.long ? 'Long' : 'Short'} liq ${p1 + CFG.liqBin / 2} ~${r.tot.toFixed(0)} BTC` : '';
+            c.createMultipointShape([{ time: Math.round(x), price: p1 }, { time: Math.round(x + len), price: p2 }], {
+              shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
+              overrides: { backgroundColor: `rgba(${cols[i]},${CFG.liqBarAlpha})`, color: 'rgba(0,0,0,0)', fillBackground: true, linewidth: 0,
+                           text: TAG + lab, showLabel: !!lab, textColor: '#e0e0e0', fontSize: 10, horzLabelsAlign: 'left', vertLabelsAlign: 'middle' } });
+            x += len;
+          });
+        }
       } catch (e) { console.warn('liq overlay', e); }
     }
   }
