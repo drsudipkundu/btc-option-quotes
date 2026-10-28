@@ -1,5 +1,5 @@
 #!/bin/bash
-# Chart page upgrade (28-Oct-2026): overlay v1.1 (adds the strategy dropdown) + v11/v12 lines for it.
+# Chart page upgrade (28-Oct-2026): overlay v1.2 (strategy dropdown + volume candles) + v11/v12 lines for it.
 # Makes a backup first; re-running is safe. Only chartpage.py changes; no keys, no bot code, no orders touched.
 set -e
 cd ~/deltabot
@@ -13,7 +13,7 @@ s = open(p, encoding='utf-8').read()
 s = re.sub(r'<script src="https://cdn\.jsdelivr\.net/gh/drsudipkundu/btc-option-quotes@[0-9a-f]+/userscripts/botchart-overlay\.js"></script>', '', s)
 end = '</script></body></html>"""'
 assert end in s, 'page end marker not found - nothing changed'
-tag = '<script src="https://cdn.jsdelivr.net/gh/drsudipkundu/btc-option-quotes@c0041720cf3da1fc96ca42ceca6320dcac944cc5/userscripts/botchart-overlay.js"></script>'
+tag = '<script src="https://cdn.jsdelivr.net/gh/drsudipkundu/btc-option-quotes@a14e9def3ecf3b6aed79b1fc1bd2df57a0ab9994/userscripts/botchart-overlay.js"></script>'
 s = s.replace(end, '</script>' + tag + '</body></html>"""')
 open(p, 'w', encoding='utf-8').write(s)
 print('overlay line updated')
