@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Delta BTCUSD – Volume profile + Option OI overlay (Sudip)
 // @namespace    sudip.btc.ladder
-// @version      1.7
-// @description  Draws a volume profile (left), estimated liquidation clusters (left-centre) and BTC option open interest by strike (right) as horizontal bars on the Delta Exchange BTCUSD chart. Read-only public market data; never places or touches orders.
+// @version      1.8
+// @description  Draws a volume profile (left), estimated liquidation clusters (left-centre), live order-book walls with a readout box (centre-right) and BTC option open interest by strike (right) as horizontal bars on the Delta Exchange BTCUSD chart. Read-only public market data; never places or touches orders.
 // @match        https://www.delta.exchange/app/futures/trade/BTC/BTCUSD*
 // @match        https://india.delta.exchange/app/futures/trade/BTC/BTCUSD*
 // @grant        none
@@ -57,7 +57,27 @@
     shortLevColors: ['200,230,201', '129,199,132', '56,142,60', '27,94,32'],
     liqBarAlpha: 0.7,
     liqLabelsTop: 4,          // label the N biggest long and short rows
+    // live order book (Delta public L2 book) - refreshed often, separate from the slow layers above
+    bookOn: true,
+    bookSec: 15,              // refresh every N seconds
+    bookDepth: 1000,          // levels per side requested (about +-2.4 % of price)
+    bookBin: 25,              // USD per row
+    bookRangePct: 1.2,        // show rows within +-N % of price
+    bookMinPct: 15,           // hide rows below N % of the biggest row
+    bookStartPct: 50,         // bars start this % from the left edge
+    bookWidthPct: 14,
+    bidColor: 'rgba(38,166,154,0.55)',
+    askColor: 'rgba(239,83,80,0.55)',
+    bookLabelsTop: 2,         // label the N biggest bid and ask rows
+    bookImbPct: 1,            // book imbalance measured within +-N % of price
+    bookTopN: 10,             // 'near' imbalance uses the best N levels each side
+    bookPocLine: true,        // amber dashed line at the liquidity POC (biggest resting row)
+    ladderCheck: true,        // for each of your green 'buy' lines: is there a bid wall within +-0.1 %?
+    ladderTolPct: 0.1,
+    ladderStrong: 1.5,        // 'support' = bid size at least N x the average row
+    contractBtc: 0.001,       // BTC per contract on Delta
   };
+  const TAGB = '\u00a7\u00a7';   // book-layer shapes start with two section signs; the slow layers never delete them
   const TAG = '§';            // every shape this script draws has text starting with §
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -77,7 +97,7 @@
 
   function clearOwn(c) {
     for (const s of c.getAllShapes()) {
-      try { const t = c.getShapeById(s.id).getProperties().text || ''; if (t.startsWith(TAG)) c.removeEntity(s.id); } catch (e) {}
+      try { const t = c.getShapeById(s.id).getProperties().text || ''; if (t.startsWith(TAG) && !t.startsWith(TAGB)) c.removeEntity(s.id); } catch (e) {}
     }
   }
   function bar(c, side, vr, frac, p1, p2, color, text, offPct) {
@@ -231,12 +251,106 @@
     }
   }
 
+
+  // ---------------- live order-book layer (v1.8) ----------------
+  function clearBook(c) {
+    for (const s of c.getAllShapes()) {
+      try { const t = c.getShapeById(s.id).getProperties().text || ''; if (t.startsWith(TAGB)) c.removeEntity(s.id); } catch (e) {}
+    }
+  }
+  function bbar(c, vr, frac, p1, p2, color, text) {
+    const span = vr.to - vr.from, len = Math.max(span * frac, span * 0.003);
+    const a = vr.from + span * CFG.bookStartPct / 100;
+    return c.createMultipointShape([{ time: Math.round(a), price: p1 }, { time: Math.round(a + len), price: p2 }], {
+      shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
+      overrides: { backgroundColor: color, color: 'rgba(0,0,0,0)', fillBackground: true, linewidth: 0,
+                   text: TAGB + (text || ''), showLabel: !!text, textColor: '#e0e0e0', fontSize: 10,
+                   horzLabelsAlign: 'left', vertLabelsAlign: 'middle' } });
+  }
+  function topPrice(c, spot) {
+    try { const r = c.getPanes()[0].getRightPriceScales()[0].getVisiblePriceRange(); if (r && r.to) return r.to - (r.to - r.from) * 0.04; } catch (e) {}
+    return spot * 1.02;
+  }
+  let bookBusy = false;
+  async function drawBook() {
+    if (!CFG.bookOn || bookBusy) return;
+    bookBusy = true;
+    try {
+      const c = await getChart(); if (!c) return;
+      const vr = c.getVisibleRange();
+      const res = await (await fetch(`${CFG.api}/l2orderbook/BTCUSD?depth=${CFG.bookDepth}`)).json();
+      const bids = (res.result.buy || []).map(x => [+x.price, x.size * CFG.contractBtc]).filter(x => x[0] > 100);
+      const asks = (res.result.sell || []).map(x => [+x.price, x.size * CFG.contractBtc]).filter(x => x[0] < 1e6);
+      if (!bids.length || !asks.length) return;
+      const bb = bids[0][0], ba = asks[0][0], mid = (bb + ba) / 2, spread = ba - bb;
+      const lim = mid * CFG.bookRangePct / 100;
+      const rowsOf = list => { const m = new Map(); for (const [p, q] of list) if (Math.abs(p - mid) <= lim) { const b = Math.floor(p / CFG.bookBin); m.set(b, (m.get(b) || 0) + q); } return m; };
+      const bidRows = rowsOf(bids), askRows = rowsOf(asks);
+      const max = Math.max(1e-9, ...bidRows.values(), ...askRows.values());
+      const topKeys = m => new Set([...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, CFG.bookLabelsTop).map(x => x[0]));
+      const tb = topKeys(bidRows), ta = topKeys(askRows);
+      // imbalance
+      const sumWithin = (list, pct) => list.reduce((a, [p, q]) => a + (Math.abs(p - mid) <= mid * pct / 100 ? q : 0), 0);
+      const B = sumWithin(bids, CFG.bookImbPct), A = sumWithin(asks, CFG.bookImbPct);
+      const nb = bids.slice(0, CFG.bookTopN).reduce((a, x) => a + x[1], 0), na = asks.slice(0, CFG.bookTopN).reduce((a, x) => a + x[1], 0);
+      const imbFull = (B - A) / (B + A), imbNear = (nb - na) / (nb + na);
+      // liquidity POC = biggest single row on either side
+      let poc = null, pv = -1, pSide = '';
+      for (const [b, q] of bidRows) if (q > pv) { pv = q; poc = b; pSide = 'bid'; }
+      for (const [b, q] of askRows) if (q > pv) { pv = q; poc = b; pSide = 'ask'; }
+      clearBook(c);
+      const mk = (m, color, tops, side) => { for (const [b, q] of m) if (q / max * 100 >= CFG.bookMinPct)
+        bbar(c, vr, (q / max) * CFG.bookWidthPct / 100, b * CFG.bookBin, (b + 1) * CFG.bookBin, color,
+             tops.has(b) ? `${side} ${(b * CFG.bookBin + CFG.bookBin / 2)} ${q.toFixed(1)} BTC` : ''); };
+      mk(bidRows, CFG.bidColor, tb, 'Bid wall'); mk(askRows, CFG.askColor, ta, 'Ask wall');
+      if (CFG.bookPocLine && poc != null) {
+        const pp = poc * CFG.bookBin + CFG.bookBin / 2;
+        c.createShape({ time: Math.round(vr.from + (vr.to - vr.from) * CFG.bookStartPct / 100), price: pp }, {
+          shape: 'horizontal_line', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
+          overrides: { linecolor: 'rgba(255,193,7,0.85)', linestyle: 2, linewidth: 1, showLabel: true,
+                       text: `${TAGB}Liq POC ${pp} (${pSide} ${pv.toFixed(1)} BTC)`, textcolor: '#ffc107', horzLabelsAlign: 'left', vertLabelsAlign: 'top', fontsize: 10 } });
+      }
+      // readout box
+      const sg = v => (v >= 0 ? '+' : '') + v.toFixed(2);
+      const flag = spread > 2 ? '  !! WIDE' : '';
+      const lean = imbNear > 0.2 ? 'buy-heavy' : imbNear < -0.2 ? 'sell-heavy' : 'balanced';
+      const txt = `${TAGB}BOOK  spread $${spread.toFixed(1)}${flag}\nimbalance near ${sg(imbNear)} (${lean})\nimbalance +-${CFG.bookImbPct}% ${sg(imbFull)}\nbids ${B.toFixed(0)} BTC | asks ${A.toFixed(0)} BTC`;
+      c.createShape({ time: Math.round(vr.from + (vr.to - vr.from) * 0.30), price: topPrice(c, mid) }, {
+        shape: 'text', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
+        overrides: { text: txt, color: '#e0e0e0', fontsize: 11, backgroundColor: 'rgba(30,34,45,0.85)', fillBackground: true,
+                     drawBorder: true, borderColor: 'rgba(255,193,7,0.6)' } });
+      // ladder-level check on the existing green 'buy' lines (read only; labels are our own)
+      if (CFG.ladderCheck) {
+        const avg = ([...bidRows.values()].reduce((a, b) => a + b, 0) / Math.max(1, bidRows.size)) || 1e-9;
+        const lowBid = bids[bids.length - 1][0];
+        for (const s of c.getAllShapes()) {
+          try {
+            if (s.name !== 'horizontal_line') continue;
+            const sh = c.getShapeById(s.id), t = (sh.getProperties().text || '');
+            if (t.startsWith(TAG) || !/buy\s*0\.00/i.test(t)) continue;
+            const pr = sh.getPoints()[0].price;
+            if (pr < lowBid || pr >= bb) continue;                 // outside the loaded book
+            const sz = bids.reduce((a, [p, q]) => a + (Math.abs(p - pr) <= pr * CFG.ladderTolPct / 100 ? q : 0), 0);
+            const rowSz = sz / Math.max(1, (2 * pr * CFG.ladderTolPct / 100) / CFG.bookBin);
+            const ok = rowSz >= CFG.ladderStrong * avg;
+            c.createShape({ time: Math.round(vr.from + (vr.to - vr.from) * 0.30), price: pr }, {
+              shape: 'text', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
+              overrides: { text: `${TAGB}${ok ? 'bid support' : 'thin'} ${sz.toFixed(1)} BTC within +-${CFG.ladderTolPct}%`,
+                           color: ok ? '#26a69a' : '#9e9e9e', fontsize: 10 } });
+          } catch (e) {}
+        }
+      }
+    } catch (e) { console.warn('book overlay', e); } finally { bookBusy = false; }
+  }
+
   let timer = null;
   async function start() {
     const c = await getChart(); if (!c) return;
     await draw();
     setInterval(draw, CFG.refreshMin * 60000);
-    try { c.onVisibleRangeChanged().subscribe(null, () => { clearTimeout(timer); timer = setTimeout(draw, 1500); }); } catch (e) {}
+    await drawBook();
+    setInterval(drawBook, CFG.bookSec * 1000);
+    try { c.onVisibleRangeChanged().subscribe(null, () => { clearTimeout(timer); timer = setTimeout(() => { draw(); drawBook(); }, 1500); }); } catch (e) {}
   }
   start();
 })();
