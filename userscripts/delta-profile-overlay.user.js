@@ -308,7 +308,7 @@
         c.createShape({ time: Math.round(vr.from + (vr.to - vr.from) * CFG.bookStartPct / 100), price: pp }, {
           shape: 'horizontal_line', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
           overrides: { linecolor: 'rgba(255,193,7,0.85)', linestyle: 2, linewidth: 1, showLabel: true,
-                       text: `${TAGB}Liq POC ${pp} (${pSide} ${pv.toFixed(1)} BTC)`, textcolor: '#ffc107', horzLabelsAlign: 'left', vertLabelsAlign: 'top', fontsize: 10 } });
+                       text: `${TAGB}Liq POC ${pp} (${pSide} ${pv.toFixed(1)} BTC)`, textcolor: '#ffc107', horzLabelsAlign: 'center', vertLabelsAlign: 'top', fontsize: 10 } });
       }
       // readout box
       const sg = v => (v >= 0 ? '+' : '') + v.toFixed(2);
@@ -325,7 +325,7 @@
         const lowBid = bids[bids.length - 1][0];
         for (const s of c.getAllShapes()) {
           try {
-            if (s.name !== 'horizontal_line') continue;
+            if (!/line|ray/.test(s.name)) continue;
             const sh = c.getShapeById(s.id), t = (sh.getProperties().text || '');
             if (t.startsWith(TAG) || !/buy\s*0\.00/i.test(t)) continue;
             const pr = sh.getPoints()[0].price;
