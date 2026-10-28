@@ -159,9 +159,14 @@
     if (!isBtc()) return;
     const ts = chart.timeScale(), plotW = ts.width(), tsH = ts.height ? ts.height() : 26, plotH = H - tsH;
     const lr = ts.getVisibleLogicalRange(); if (!lr || plotW <= 0) return;
-    const iv = ivSec(), lastT = Math.floor(Date.now() / 1000 / iv) * iv, spacing = plotW / (lr.to - lr.from);
-    let xLast = ts.timeToCoordinate(lastT); if (xLast == null) xLast = plotW * 0.9;
-    const X = t => { if (t >= lastT) return xLast + (t - lastT) / iv * spacing; const x = ts.timeToCoordinate(t); return x == null ? 0 : x; };
+    const iv = ivSec(), spacing = plotW / (lr.to - lr.from);
+    // the chart's own newest bar (the page may lag the clock by a candle or two); times after it are extrapolated
+    let Tb = null; try { const d = cs.dataByIndex(Math.floor(lr.to), -1); if (d) Tb = d.time; } catch (e) {}
+    if (Tb == null) return;
+    const xb = ts.timeToCoordinate(Tb); if (xb == null) return;
+    const lastT = Math.max(Tb, Math.floor(Date.now() / 1000 / iv) * iv);
+    const X = t => { if (t >= Tb) return xb + (t - Tb) / iv * spacing; const x = ts.timeToCoordinate(t); return x == null ? 0 : x; };
+    const xLast = X(lastT);
     const Y = p => cs.priceToCoordinate(p);
     const txt = isLight() ? '#1f2937' : '#e0e0e0';
     g.save(); g.beginPath(); g.rect(0, 0, plotW, plotH); g.clip();
