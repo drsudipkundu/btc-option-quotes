@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Delta BTCUSD – Volume profile + Option OI overlay (Sudip)
 // @namespace    sudip.btc.ladder
-// @version      1.8
+// @version      1.9
 // @description  Draws a volume profile (left), estimated liquidation clusters (left-centre), live order-book walls with a readout box (centre-right) and BTC option open interest by strike (right) as horizontal bars on the Delta Exchange BTCUSD chart. Read-only public market data; never places or touches orders.
 // @match        https://www.delta.exchange/app/futures/trade/BTC/BTCUSD*
 // @match        https://india.delta.exchange/app/futures/trade/BTC/BTCUSD*
@@ -64,8 +64,8 @@
     bookBin: 25,              // USD per row
     bookRangePct: 1.2,        // show rows within +-N % of price
     bookMinPct: 15,           // hide rows below N % of the biggest row
-    bookStartPct: 50,         // bars start this % from the left edge
-    bookWidthPct: 14,
+    bookGapBars: 1,           // walls start this many candles right of the current candle
+    bookWidthBars: 5,         // longest wall = this many candles long (needs that much empty space on the right: drag the chart left)
     bidColor: 'rgba(38,166,154,0.55)',
     askColor: 'rgba(239,83,80,0.55)',
     bookLabelsTop: 2,         // label the N biggest bid and ask rows
@@ -258,9 +258,18 @@
       try { const t = c.getShapeById(s.id).getProperties().text || ''; if (t.startsWith(TAGB)) c.removeEntity(s.id); } catch (e) {}
     }
   }
+  function ivSec(c) {
+    try { const r = String(c.resolution()); let m;
+      if (/^\d+$/.test(r)) return +r * 60;
+      if ((m = /^(\d+)S$/i.exec(r))) return +m[1];
+      if ((m = /^(\d*)D$/i.exec(r))) return (+m[1] || 1) * 86400;
+      if ((m = /^(\d*)W$/i.exec(r))) return (+m[1] || 1) * 604800;
+      if ((m = /^(\d+)h$/i.exec(r))) return +m[1] * 3600; } catch (e) {}
+    return 3600;
+  }
   function bbar(c, vr, frac, p1, p2, color, text) {
-    const span = vr.to - vr.from, len = Math.max(span * frac, span * 0.003);
-    const a = vr.from + span * CFG.bookStartPct / 100;
+    const iv = ivSec(c), last = Math.floor(Date.now() / 1000 / iv) * iv;   // open time of the current candle
+    const a = last + iv * CFG.bookGapBars, len = Math.max(iv * CFG.bookWidthBars * frac, iv * 0.5);
     return c.createMultipointShape([{ time: Math.round(a), price: p1 }, { time: Math.round(a + len), price: p2 }], {
       shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
       overrides: { backgroundColor: color, color: 'rgba(0,0,0,0)', fillBackground: true, linewidth: 0,
@@ -300,12 +309,12 @@
       for (const [b, q] of askRows) if (q > pv) { pv = q; poc = b; pSide = 'ask'; }
       clearBook(c);
       const mk = (m, color, tops, side) => { for (const [b, q] of m) if (q / max * 100 >= CFG.bookMinPct)
-        bbar(c, vr, (q / max) * CFG.bookWidthPct / 100, b * CFG.bookBin, (b + 1) * CFG.bookBin, color,
-             tops.has(b) ? `${side} ${(b * CFG.bookBin + CFG.bookBin / 2)} ${q.toFixed(1)} BTC` : ''); };
+        bbar(c, vr, q / max, b * CFG.bookBin, (b + 1) * CFG.bookBin, color,
+             tops.has(b) ? `${q.toFixed(0)} BTC` : ''); };
       mk(bidRows, CFG.bidColor, tb, 'Bid wall'); mk(askRows, CFG.askColor, ta, 'Ask wall');
       if (CFG.bookPocLine && poc != null) {
         const pp = poc * CFG.bookBin + CFG.bookBin / 2;
-        c.createShape({ time: Math.round(vr.from + (vr.to - vr.from) * CFG.bookStartPct / 100), price: pp }, {
+        c.createShape({ time: Math.round(vr.from + (vr.to - vr.from) * 0.5), price: pp }, {
           shape: 'horizontal_line', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
           overrides: { linecolor: 'rgba(255,193,7,0.85)', linestyle: 2, linewidth: 1, showLabel: true,
                        text: `${TAGB}Liq POC ${pp} (${pSide} ${pv.toFixed(1)} BTC)`, textcolor: '#ffc107', horzLabelsAlign: 'center', vertLabelsAlign: 'top', fontsize: 10 } });
