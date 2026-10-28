@@ -1,4 +1,4 @@
-/* My Bots chart page overlay (v1.0, 28-Oct-2026): same layers as the Delta userscript v1.9, drawn on a canvas over the lightweight-charts chart.
+/* My Bots chart page overlay (v1.1, 28-Oct-2026): same layers as the Delta userscript v1.9, drawn on a canvas over the lightweight-charts chart.
    Volume profile (left), estimated liquidation clusters (left-centre), BTC option OI (right), live order-book walls just right of the
    current candle, liquidity POC line, book readout box, ladder-level wall check (on the bot's own green 'buy' lines).
    Read-only public data. Loaded by chartpage.py via one <script> tag; needs the page globals chart, cs, sym, res, RES, light, wrap. */
@@ -29,6 +29,29 @@
   cv.id = 'bco'; cv.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;z-index:6';
   wrap.appendChild(cv);
   const g = cv.getContext('2d');
+
+  // ---------------- strategy dropdown: choose which strategy's bot drawings are visible ----------------
+  const STRATS = [['all', 'All strategies'], ['ladder', 'Ladder v9'], ['lv11', 'Ladder v11'], ['lv12', 'Ladder v12'],
+                  ['v4a', 'Night v4A-CG'], ['v5a', 'Night v5A-CG'], ['manual', 'My paper trades']];
+  const LSget = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const LSset = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+  let selStrat = LSget('bco_strat'); if (!STRATS.some(x => x[0] === selStrat)) selStrat = 'ladder';
+  const stratOf = x => x.strat || (/^V4A/.test(x.label || '') ? 'v4a' : /^V5A/.test(x.label || '') ? 'v5a' : /^MY PAPER/.test(x.label || '') ? 'manual' : 'ladder');
+  const keep = x => selStrat === 'all' || stratOf(x) === selStrat;
+  try {   // the page draws its lines from api('/api/auto...'); filter that answer
+    const origApi = window.api;
+    window.api = async function (u, o) {
+      const r = await origApi.call(this, u, o);
+      return (typeof u === 'string' && u.indexOf('/api/auto') === 0 && Array.isArray(r)) ? r.filter(keep) : r;
+    };
+  } catch (e) { console.warn('bco api wrap', e); }
+  const sel = document.createElement('select'); sel.id = 'stratSel'; sel.title = 'Show the drawings of this strategy';
+  sel.style.cssText = 'margin-left:8px;padding:3px 6px';
+  STRATS.forEach(([k, n]) => { const o = document.createElement('option'); o.value = k; o.textContent = n; sel.appendChild(o); });
+  sel.value = selStrat;
+  const anchor = document.getElementById('auto'); (anchor && anchor.parentElement ? anchor.parentElement : document.querySelector('.bar')).after(sel);
+  sel.onchange = () => { selStrat = sel.value; LSset('bco_strat', selStrat); try { autoLines(); } catch (e) {} bookRefresh(); };
+  try { autoLines(); } catch (e) {}   // apply the saved choice at once
   const S = { vp: null, oi: null, liq: null, book: null, ladder: [], ver: 0 };
   const isLight = () => { try { return !!light; } catch (e) { return false; } };
   const ivSec = () => { try { return RES[res] || 3600; } catch (e) { return 3600; } };
@@ -131,7 +154,7 @@
       let ladder = [];
       if (CFG.ladderCheck) {
         try {
-          const lines = await (await fetch('/api/auto?sym=BTCUSD')).json();
+          const lines = (await (await fetch('/api/auto?sym=BTCUSD')).json()).filter(keep);
           const avg = ([...bidRows.values()].reduce((a, b) => a + b, 0) / Math.max(1, bidRows.size)) || 1e-9;
           const lowBid = bids[bids.length - 1][0];
           for (const L of (Array.isArray(lines) ? lines : [])) {
