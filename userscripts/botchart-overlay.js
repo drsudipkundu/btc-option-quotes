@@ -1,4 +1,4 @@
-/* My Bots chart page overlay (v1.1, 28-Oct-2026): same layers as the Delta userscript v1.9, drawn on a canvas over the lightweight-charts chart.
+/* My Bots chart page overlay (v1.2, 28-Oct-2026): same layers as the Delta userscript v1.9, drawn on a canvas over the lightweight-charts chart.
    Volume profile (left), estimated liquidation clusters (left-centre), BTC option OI (right), live order-book walls just right of the
    current candle, liquidity POC line, book readout box, ladder-level wall check (on the bot's own green 'buy' lines).
    Read-only public data. Loaded by chartpage.py via one <script> tag; needs the page globals chart, cs, sym, res, RES, light, wrap. */
@@ -52,6 +52,23 @@
   const anchor = document.getElementById('auto'); (anchor && anchor.parentElement ? anchor.parentElement : document.querySelector('.bar')).after(sel);
   sel.onchange = () => { selStrat = sel.value; LSset('bco_strat', selStrat); try { autoLines(); } catch (e) {} bookRefresh(); };
   try { autoLines(); } catch (e) {}   // apply the saved choice at once
+
+  // ---------------- volume candles (candle width grows with volume, like the Delta chart's Volume candles) ----------------
+  let volOn = LSget('bco_volcandle') !== '0';
+  const vcLab = document.createElement('label'); vcLab.style.cssText = 'margin-left:8px;white-space:nowrap';
+  const vcBox = document.createElement('input'); vcBox.type = 'checkbox'; vcBox.checked = volOn;
+  vcLab.appendChild(vcBox); vcLab.appendChild(document.createTextNode(' Volume candles')); sel.after(vcLab);
+  const CLEAR = 'rgba(0,0,0,0)'; let origOpt = null;
+  function applyCandleMode() {   // hide the native candles while ours are drawn; restore when switched off
+    try {
+      const o = cs.options();
+      if (volOn) {
+        if (!origOpt && o.upColor !== CLEAR) origOpt = { upColor: o.upColor, downColor: o.downColor, borderUpColor: o.borderUpColor, borderDownColor: o.borderDownColor, wickUpColor: o.wickUpColor, wickDownColor: o.wickDownColor };
+        if (o.upColor !== CLEAR || o.wickUpColor !== CLEAR) cs.applyOptions({ upColor: CLEAR, downColor: CLEAR, borderUpColor: CLEAR, borderDownColor: CLEAR, wickUpColor: CLEAR, wickDownColor: CLEAR });
+      } else if (origOpt) { cs.applyOptions(origOpt); origOpt = null; }
+    } catch (e) {}
+  }
+  vcBox.onchange = () => { volOn = vcBox.checked; LSset('bco_volcandle', volOn ? '1' : '0'); applyCandleMode(); sig = ''; };
   const S = { vp: null, oi: null, liq: null, book: null, ladder: [], ver: 0 };
   const isLight = () => { try { return !!light; } catch (e) { return false; } };
   const ivSec = () => { try { return RES[res] || 3600; } catch (e) { return 3600; } };
@@ -193,6 +210,27 @@
     const Y = p => cs.priceToCoordinate(p);
     const txt = isLight() ? '#1f2937' : '#e0e0e0';
     g.save(); g.beginPath(); g.rect(0, 0, plotW, plotH); g.clip();
+
+    if (volOn) {   // volume candles: x by time, width by volume (square-root scale so one spike does not flatten the rest)
+      const i0 = Math.max(0, Math.floor(lr.from) - 1), i1 = Math.ceil(lr.to) + 1, bars = [];
+      let vmax = 1e-9;
+      for (let i = i0; i <= i1; i++) {
+        let d = null, v = null; try { d = cs.dataByIndex(i, 0); v = vol.dataByIndex(i, 0); } catch (e) {}
+        if (!d || d.open == null) continue;
+        const q = v && v.value ? +v.value : 0; if (q > vmax) vmax = q;
+        bars.push([i, d, q]);
+      }
+      const up = (origOpt && origOpt.upColor) || '#22c55e', dn = (origOpt && origOpt.downColor) || '#ef4444';
+      const wmax = Math.max(3, spacing * 2.6);
+      for (const [i, d, q] of bars) {
+        const x = ts.logicalToCoordinate(i); if (x == null) continue;
+        const yo = cs.priceToCoordinate(d.open), yc = cs.priceToCoordinate(d.close), yh = cs.priceToCoordinate(d.high), yl = cs.priceToCoordinate(d.low);
+        if (yo == null || yc == null || yh == null || yl == null) continue;
+        const w = Math.max(1, wmax * Math.sqrt(q / vmax)), col = d.close >= d.open ? up : dn;
+        g.fillStyle = col; g.fillRect(x - 0.5, yh, 1, Math.max(1, yl - yh));                       // wick
+        g.fillRect(x - w / 2, Math.min(yo, yc), w, Math.max(1, Math.abs(yc - yo)));             // body
+      }
+    }
     const R = (x1, p1, x2, p2, fill) => {   // rectangle between two prices
       const ya = Y(p1), yb = Y(p2); if (ya == null || yb == null) return;
       g.fillStyle = fill; g.fillRect(Math.min(x1, x2), Math.min(ya, yb), Math.abs(x2 - x1), Math.max(1, Math.abs(yb - ya)));
@@ -272,14 +310,16 @@
   let sig = '';
   function tick() {
     try {
+      applyCandleMode();
       const ts = chart.timeScale(), lr = ts.getVisibleLogicalRange();
-      const s = [lr && lr.from, lr && lr.to, cs.priceToCoordinate(80000), cs.priceToCoordinate(70000), wrap.clientWidth, wrap.clientHeight,
+      let lc = ''; try { const d = cs.dataByIndex(Math.floor(lr.to), -1); lc = d ? d.close + ':' + d.high + ':' + d.low : ''; } catch (e) {}
+      const s = [lc, volOn, lr && lr.from, lr && lr.to, cs.priceToCoordinate(80000), cs.priceToCoordinate(70000), wrap.clientWidth, wrap.clientHeight,
                  isLight(), sym, res, S.ver, ts.width(), Math.floor(Date.now() / 60000)].join('|');
       if (s !== sig) { sig = s; draw(); }
     } catch (e) {}
     requestAnimationFrame(tick);
   }
-  tick();
+  applyCandleMode(); tick();
   slowRefresh(); setInterval(slowRefresh, CFG.refreshMin * 60000);
   bookRefresh(); setInterval(bookRefresh, CFG.bookSec * 1000);
 })();
