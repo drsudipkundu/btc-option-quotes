@@ -24,7 +24,7 @@ log = logging.getLogger("shadow")
 
 # Base = v4A-CG-SL exactly as live/paper today. Each shadow overrides one value.
 BASE = dict(rule="v4a", dist_n=0.025, k=1.4, moved_hv=NL.MOVED_HV, main_mv=0.005, rg=1.0, decay=0.10, cg=2.0,
-            ins=0.04, min_bid=NL.MIN_BID, iv_k=1.40, sl_thr=0.123, sl_cut=0.5)
+            ins=0.04, ent=0, min_bid=NL.MIN_BID, iv_k=1.40, sl_thr=0.123, sl_cut=0.5)
 FLEET = [
     ("base", "BASE = v4A-CG-SL today", {}),
     ("sl_off", "slope rule OFF (= v4A-CG)", dict(sl_thr=None)),
@@ -46,13 +46,26 @@ FLEET = [
     ("bid_05", "floor bid $5", dict(min_bid=5.0)),
     ("bid_15", "floor bid $15", dict(min_bid=15.0)),
     ("boost_off", "IV boost OFF", dict(iv_k=None)),
+    ("t_2230", "entry 22:30 IST", dict(ent=-60)),
+    ("t_2300", "entry 23:00 IST", dict(ent=-30)),
+    ("t_0000", "entry 00:00 IST", dict(ent=30)),
+    ("t_0030", "entry 00:30 IST", dict(ent=60)),
 ]
 GROUPS = {"sl": "Slope threshold (0.123)", "dist": "Normal distance (2.5%)", "k": "Moved distance (1.4 sigma)",
           "mhv": "Moved switch (HV14 0.283)", "rg": "Quiet-day guard (1.0)", "cg": "Crash guard (2 x ATR)",
-          "dec": "Early buy-back (90%)", "bid": "Bid floor ($10)", "boost": "IV boost (1.4)"}
+          "dec": "Early buy-back (90%)", "bid": "Bid floor ($10)", "boost": "IV boost (1.4)", "t": "Entry time (23:30)"}
 # 6.7-year Deribit backtest of v4A-CG (claude/v4cg-v5cg-fresh-backtest-slope-half-2026-10-29.md), test period after Apr-2024
 REF = dict(trade_rate=0.658, win_rate=0.981, flag_rate=0.164, moved_rate=0.711)
 ACC_Q = [(-0.228, 5), (-0.094, 25), (-0.002, 50), (0.084, 75), (0.121, 83), (0.222, 95)]
+
+def rel2330(now):
+    """Minutes from 23:30 IST, in [-720, 720): 23:00 -> -30, 00:30 -> +60."""
+    m = now.hour * 60 + now.minute
+    return ((m - 1410 + 720) % 1440) - 720
+
+def night_day(now):
+    """The night a moment belongs to: before 12:00 IST counts as the previous evening's night."""
+    return (now - dt.timedelta(days=1) if now.hour < 12 else now).strftime("%Y-%m-%d")
 
 class Shadow(Night):
     def __init__(self, sid, label, over, base_qty):
@@ -112,6 +125,8 @@ class Shadow(Night):
     def step(self, now, spot, ch, ind, stopped=False):
         hm = now.hour * 100 + now.minute
         today = now.strftime("%Y-%m-%d")
+        rel, off = rel2330(now), self.P["ent"]
+        in_entry = off <= rel <= off + 28
         if self.open_legs() and now.timestamp() > self.S["exp"] + 600:
             self._settle(now, spot)
             return True
@@ -124,16 +139,16 @@ class Shadow(Night):
             return False
         changed = False
         dec = self.P["decay"]
-        if hm < 2330 and dec is not None:
+        if not in_entry and dec is not None:
             for l in self.open_legs():
                 if l["dir"] == "S":
                     o = find(ch, l["side"], l["strike"])
                     if o and o["mark"] > 0 and o["mark"] <= dec * l["entry"]:
                         self._close(now, spot, l, o, "DECAY")
                         changed = True
-        if 2330 <= hm <= 2358 and ind and not stopped:
-            changed |= self._entries(now, spot, ch, ind, today)
-        if (hm >= 2330 or hm < 1715) and self.open_legs() and ind and self.P["cg"] is not None:
+        if in_entry and ind and not stopped:
+            changed |= self._entries(now, spot, ch, ind, night_day(now))
+        if not (1715 <= hm < 1800) and self.open_legs() and ind and self.P["cg"] is not None:
             changed |= self._crash_guard(now, spot, ch, ind)
         if changed:
             self.save()
@@ -278,7 +293,7 @@ def tick(fleet, feed, cache, now_ts):
     for s in fleet:
         if s.close_night_if_idle(now):
             s.save()
-    in_window = 2325 <= hm <= 2358
+    in_window = -65 <= rel2330(now) <= 90
     open_any = any(s.open_legs() for s in fleet)
     if not (in_window or open_any):
         return 60
