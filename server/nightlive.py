@@ -297,9 +297,47 @@ class LiveNight(Night):
             self.save()
         return changed
 
+    def log_margin(self, now, spot):
+        """Every minute while a sale is open: real margin blocked + unrealised loss from the Delta account (read only).
+        -> logs/nightlive_margin.csv ; the night's peak goes into the night-end email."""
+        import csv
+        if not hasattr(self.cl, "_p"):
+            return
+        wb = {}
+        for b in (self.cl._p("GET", "/v2/wallet/balances").get("result") or []):
+            if b.get("asset_symbol") in ("USD", "USDT"):
+                wb = b
+        pos = [p for p in (self.cl._p("GET", "/v2/positions/margined").get("result") or [])
+               if str(p.get("product_symbol", "")).startswith(OPT) and float(p.get("size") or 0)]
+        f = lambda d, k: float(d.get(k) or 0)
+        pm = sum(f(p, "margin") for p in pos)
+        up = sum(f(p, "unrealized_pnl") for p in pos)
+        bal, avail = f(wb, "balance"), f(wb, "available_balance")
+        tied = bal - avail
+        path = os.path.join(HOME, "logs", "nightlive_margin.csv")
+        new = not os.path.exists(path)
+        with open(path, "a", newline="") as fh:
+            w = csv.writer(fh)
+            if new:
+                w.writerow(["time_ist", "spot", "positions", "position_margin_usd", "unrealised_pnl_usd", "wallet_balance", "available", "tied_up_usd", "wallet_margin_fields"])
+            w.writerow([now.strftime("%Y-%m-%d %H:%M:%S"), round(spot, 1),
+                        " ".join("%s:%s@%s mark %s liq %s" % (p.get("product_symbol"), p.get("size"), p.get("entry_price"), p.get("mark_price"), p.get("liquidation_price")) for p in pos),
+                        round(pm, 4), round(up, 4), round(bal, 4), round(avail, 4), round(tied, 4),
+                        json.dumps({k: v for k, v in wb.items() if "margin" in k or "pnl" in k})[:400]])
+        pk = self.S.setdefault("peak", {})
+        if tied > pk.get("tied", 0):
+            pk.update(tied=round(tied, 2), margin=round(pm, 2), upnl=round(up, 2), spot=round(spot, 1), t=now.strftime("%d-%b %H:%M"))
+            self.save()
+
     def _finish(self, now, why):
+        pk = self.S.get("peak") or {}
+        if pk:
+            self.notify("%s margin report %s" % (self.lab, self.S.get("night")),
+                        "peak money tied up %.2f USD at %s (margin %.2f, unrealised P&L %.2f, spot %.1f). Full minute log: logs/nightlive_margin.csv"
+                        % (pk.get("tied", 0), pk.get("t"), pk.get("margin", 0), pk.get("upnl", 0), pk.get("spot", 0)))
         Night._finish(self, now, why)
         self.S["finished"] = self.S.get("night")
+        self.S["peak"] = {}
         self.save()
 
     def _entries(self, now, spot, ch, ind, today):
@@ -418,6 +456,10 @@ def main():
             if n.open_legs() and time.time() - last_chk > 60:
                 last_chk = time.time()
                 n.check_books("minute check")
+                try:
+                    n.log_margin(dt.datetime.now(IST), feed.spot())
+                except Exception as e:
+                    log.warning("margin log failed: %s", e)
             fails = 0
         except Exception as e:
             fails += 1
