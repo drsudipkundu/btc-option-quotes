@@ -467,7 +467,7 @@ def page_html():
              "t-score = how consistently the copy beat its base day by day (paired, daily equity change). "
              "RESET CANDIDATE = 90+ days, t-score 2 or more and a max drawdown no more than 10% deeper than the base: a prompt to re-test "
              "that value on the long backtest, not an automatic change. Files: logs/ladshadow_days.csv, logs/ladshadow/trades_*.csv.</p></body></html>")
-    return "".join(h)
+    return "".join(h).encode("utf-8")
 
 
 if __name__ == "__main__":
