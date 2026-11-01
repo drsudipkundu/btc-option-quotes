@@ -16,6 +16,7 @@ sys.path.insert(0, HOME)
 import nightlogic as NL
 import healthnav
 from nightlogic import Night, parse_chain, next_expiry_ts, indicators, find, fee, is_full, IST, UTC, DAILY
+from smartsell import SmartSellPaper
 
 SDIR = os.path.join(HOME, "state", "shadow")
 LDIR = os.path.join(HOME, "logs", "shadow")
@@ -80,7 +81,7 @@ def night_day(now):
     """The night a moment belongs to: before 12:00 IST counts as the previous evening's night."""
     return (now - dt.timedelta(days=1) if now.hour < 12 else now).strftime("%Y-%m-%d")
 
-class Shadow(Night):
+class Shadow(SmartSellPaper, Night):
     def __init__(self, sid, label, over, base_qty, fleet="v4"):
         F = FLEETS[fleet]
         self.sid, self.label, self.fleet = sid, label, fleet
@@ -318,7 +319,7 @@ def tick(fleet, feed, cache, now_ts):
         if s.close_night_if_idle(now):
             s.save()
     in_window = -65 <= rel2330(now) <= 90
-    open_any = any(s.open_legs() for s in fleet)
+    open_any = any(s.open_legs() or s.ss_pending() for s in fleet)
     if not (in_window or open_any):
         return 60
     if not cache.get("ind") or now_ts - cache.get("t", 0) >= (60 if in_window else 900):
@@ -329,6 +330,7 @@ def tick(fleet, feed, cache, now_ts):
     ch = feed.chain(exp_ts)
     for s in fleet:
         try:
+            s.ss_tick(now, spot, ch)
             s.step(now, spot, ch, ind)
         except Exception as e:
             log.exception("shadow %s step failed: %s", s.sid, e)

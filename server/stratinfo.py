@@ -17,7 +17,7 @@ NIGHT_COMMON = dict(
     side="Previous daily close above SMA50 -> sell a PUT, else sell a CALL (the side away from the trend)",
     strike="Normal night: nearest listed strike 2.5% away. Moved night (HV14 > 0.283): 1.4 x daily sigma away. Skips strikes that Delta has capped (jumps further out, max 1,200 points). Sells only if the BID is at least $10",
     exits="90% buy-back once the option has lost 90% of its value (checked after midnight); everything left is closed at 17:20 IST next day",
-    guards="Crash guard: if BTC moves 2 x ATR14 against the sale, buys the same quantity of an option 4% beyond (insurance). $10 bid floor. One sale per side per night")
+    guards="Crash guard: if BTC moves 2 x ATR14 against the sale, buys the same quantity of an option 4% beyond (insurance). $10 bid floor. One sale per side per night. SMART SELL on every sale: mid-price offer 60 s, then sells into the bids down to 80% of the start bid (never < $10), 3 retries 3 min apart, up to 4 strikes further out, else skip (paper copies: filled only against the real Delta order book)")
 
 S = {
     "v4a": dict(NIGHT_COMMON, title="Night v4A-CG", kind="night",
@@ -30,7 +30,7 @@ S = {
                   size="Base 0.02 BTC (same multiples as v4A-CG-SL). Size guard: max 0.05 BTC per order, 0.15 BTC open",
                   rules="Slope rule as v4A-CG-SL (half size above 0.123)",
                   exits=NIGHT_COMMON["exits"] + ". Buy-back pays up to 1.5x the ask; 17:20 exit up to 3x, Delta settles anything left at 17:30",
-                  guards=NIGHT_COMMON["guards"] + ". Smart seller: mid-price offer 60 s, then bids down to 80% of the start price (never < $10), 3 retries 3 min apart, up to 4 strikes further out, else skip. Position check every minute: any mismatch stops new sales"),
+                  guards=NIGHT_COMMON["guards"] + ". Position check every minute: any mismatch stops new sales"),
     "v5a": dict(NIGHT_COMMON, title="Night v5A-CG", kind="night",
                 size="Base 0.02 BTC. Main night 1x (moved 3x). Quiet night 1x. Extra OPPOSITE-side leg 1x when HV14 >= HV365. IV boost +0.5x on normal (not moved) nights",
                 rules="No slope rule"),
