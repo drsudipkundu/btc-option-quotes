@@ -290,9 +290,9 @@
   }
   function blabel(c, frac, price, text, h) {   // quantity label = a small dark chip (rectangle) right of the bar; text shapes cannot sit in the empty area right of the last candle
     const iv = ivSec(c), last = Math.floor(Date.now() / 1000 / iv) * iv, a = last + iv * CFG.bookGapBars + BL(iv, frac) + iv * 0.15;
-    return c.createMultipointShape([{ time: Math.round(a), price: price - h / 2 }, { time: Math.round(a + iv * 4), price: price + h / 2 }], {
+    return c.createMultipointShape([{ time: Math.round(a), price: price - h / 2 }, { time: Math.round(a + iv * 8), price: price + h / 2 }], {
       shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
-      overrides: { backgroundColor: 'rgba(30,34,45,0.85)', color: 'rgba(0,0,0,0)', fillBackground: true, linewidth: 0,
+      overrides: { backgroundColor: 'rgba(30,34,45,0.95)', backgroundTransparency: 0, color: 'rgba(0,0,0,0)', fillBackground: true, linewidth: 0,
                    text: TAGB + text, showLabel: true, textColor: '#e0e0e0', fontSize: 10, horzLabelsAlign: 'left', vertLabelsAlign: 'middle' } });
   }
   function topPrice(c, spot) {
