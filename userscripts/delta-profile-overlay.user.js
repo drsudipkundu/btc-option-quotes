@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Delta BTCUSD – Volume profile + Option OI overlay (Sudip)
 // @namespace    sudip.btc.ladder
-// @version      2.1
+// @version      2.2
 // @description  Draws a volume profile (left), estimated liquidation clusters (left-centre), live order-book walls with a readout box (centre-right) and BTC option open interest by strike (right) as horizontal bars on the Delta Exchange BTCUSD chart. Read-only public market data; never places or touches orders.
 // @match        https://www.delta.exchange/app/futures/trade/BTC/BTCUSD*
 // @match        https://india.delta.exchange/app/futures/trade/BTC/BTCUSD*
@@ -278,7 +278,8 @@
   }
   const bookHist = [];   // recent book snapshots, to show what was added or pulled
   // The chart only keeps times right of the last candle when they sit exactly on a whole candle, so every bar is a whole number of candles long.
-  const BS = f => Math.round(CFG.bookWidthBars * f), BE = f => Math.max(1, BS(f));
+  const BK = { w: 8, px: 10 };   // set on every redraw from the room that is really free right of the last candle
+  const BS = f => Math.round(BK.w * f), BE = f => Math.max(1, BS(f));
   function bbar(c, vr, frac, p1, p2, color, text, opt) {
     const iv = ivSec(c), last = Math.floor(Date.now() / 1000 / iv) * iv;   // open time of the current candle
     opt = opt || {};
@@ -291,8 +292,8 @@
                    horzLabelsAlign: 'left', vertLabelsAlign: 'middle' } });
   }
   function blabel(c, frac, price, text, h) {   // quantity label = a small dark chip (rectangle) right of the bar; text shapes cannot sit in the empty area right of the last candle
-    const iv = ivSec(c), last = Math.floor(Date.now() / 1000 / iv) * iv, k0 = CFG.bookGapBars + BE(frac);
-    return c.createMultipointShape([{ time: last + iv * k0, price: price - h / 2 }, { time: last + iv * (k0 + 5), price: price + h / 2 }], {
+    const iv = ivSec(c), last = Math.floor(Date.now() / 1000 / iv) * iv, k0 = CFG.bookGapBars + BE(frac), cb = Math.ceil(((TAGB + text).length * 6 + 10) / BK.px);   // chip as wide as its text at this zoom
+    return c.createMultipointShape([{ time: last + iv * k0, price: price - h / 2 }, { time: last + iv * (k0 + cb), price: price + h / 2 }], {
       shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
       overrides: { backgroundColor: 'rgba(30,34,45,0.95)', backgroundTransparency: 0, color: 'rgba(0,0,0,0)', fillBackground: true, linewidth: 0,
                    text: TAGB + text, showLabel: true, textColor: '#e0e0e0', fontSize: 10, horzLabelsAlign: 'left', vertLabelsAlign: 'middle' } });
@@ -308,6 +309,14 @@
     try {
       const c = await getChart(); if (!c) return;
       const vr = c.getVisibleRange();
+      try {   // keep the bars and their labels inside the empty space right of the last candle
+        const tsa = c.getTimeScale();
+        if (!c.__bkRoom && tsa.rightOffset() < 16) tsa.setRightOffset(18);
+        c.__bkRoom = true;
+        BK.px = Math.max(3, tsa.barSpacing());
+        const labBars = Math.ceil(70 / BK.px);   // room kept for a label such as "§§209 BTC (+208)"
+        BK.w = Math.max(1, Math.min(CFG.bookWidthBars, Math.floor(tsa.rightOffset()) - CFG.bookGapBars - labBars));
+      } catch (e) {}
       const res = await (await fetch(`${CFG.api}/l2orderbook/BTCUSD?depth=${CFG.bookDepth}`)).json();
       const bids = (res.result.buy || []).map(x => [+x.price, x.size * CFG.contractBtc]).filter(x => x[0] > 100);
       const asks = (res.result.sell || []).map(x => [+x.price, x.size * CFG.contractBtc]).filter(x => x[0] < 1e6);
