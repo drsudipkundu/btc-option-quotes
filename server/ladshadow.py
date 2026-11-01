@@ -397,7 +397,9 @@ def _tscore(d):
     return m / (sd / math.sqrt(n)) if sd > 0 else 0.0
 
 
-def page_html():
+def page_html(ver=None):
+    import healthnav
+    ver = ver if ver in ("v9", "v10", "v11", "v12") else "v9"
     try:
         S = json.load(open(SUMMARY))
     except Exception:
@@ -425,8 +427,8 @@ def page_html():
          "table{border-collapse:collapse;font-size:13px;margin-bottom:18px;width:100%}td,th{border-bottom:1px solid #e2e8f0;padding:4px 6px;text-align:right}",
          "td:first-child,th:first-child{text-align:left}th{background:#e2e8f0}tr.g td{background:#f1f5f9;font-weight:600;text-align:left}",
          ".base td{background:#eef6ff;font-weight:600}.pos{color:#15803d}.neg{color:#b91c1c}.wrap{overflow-x:auto}</style></head><body>",
-         "<a href='/'>&larr; My Bots</a> &nbsp; <a href='/health'>Night-sell health</a>",
-         "<h2>Ladder health (shadow fleet)</h2>",
+         "<a href='/'>&larr; My Bots</a>", healthnav.bar(ver),
+         "<h2>Ladder health: %s</h2>" % ver.upper(),
          "<p>%d paper copies of the ladders v9, v10, v11 and v12 trade the same live Delta prices, each with ONE value changed. "
          "Every version has its own BASE copy, started fresh with the fleet, so all copies of a version are compared from the same start. "
          "Paper only, never real orders. Fees included, funding not modelled. Mark now %.1f. "
@@ -434,7 +436,7 @@ def page_html():
     byver = {}
     for c in S["copies"]:
         byver.setdefault(c["ver"], []).append(c)
-    for ver in ("v9", "v10", "v11", "v12"):
+    for ver in (ver,):
         cs = byver.get(ver, [])
         if not cs:
             continue

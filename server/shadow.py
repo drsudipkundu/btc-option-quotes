@@ -14,6 +14,7 @@ from logging.handlers import RotatingFileHandler
 HOME = os.environ.get("BOT_HOME", os.path.expanduser("~/deltabot"))
 sys.path.insert(0, HOME)
 import nightlogic as NL
+import healthnav
 from nightlogic import Night, parse_chain, next_expiry_ts, indicators, find, fee, is_full, IST, UTC, DAILY
 
 SDIR = os.path.join(HOME, "state", "shadow")
@@ -24,7 +25,7 @@ log = logging.getLogger("shadow")
 
 # Base = v4A-CG-SL exactly as live/paper today. Each shadow overrides one value.
 BASE = dict(rule="v4a", dist_n=0.025, k=1.4, moved_hv=NL.MOVED_HV, main_mv=0.005, rg=1.0, decay=0.10, cg=2.0,
-            ins=0.04, ent=0, min_bid=NL.MIN_BID, iv_k=1.40, sl_thr=0.123, sl_cut=0.5)
+            ins=0.04, ent=0, min_bid=NL.MIN_BID, iv_k=1.40, sl_thr=0.123, sl_cut=0.5, xhv=1.0, xq=1.0, mv5=3)
 FLEET = [
     ("base", "BASE = v4A-CG-SL today", {}),
     ("sl_off", "slope rule OFF (= v4A-CG)", dict(sl_thr=None)),
@@ -51,11 +52,23 @@ FLEET = [
     ("t_0000", "entry 00:00 IST", dict(ent=30)),
     ("t_0030", "entry 00:30 IST", dict(ent=60)),
 ]
-GROUPS = {"sl": "Slope threshold (0.123)", "dist": "Normal distance (2.5%)", "k": "Moved distance (1.4 sigma)",
+# v5A-CG-SL fleet (1-Nov-2026): same one-change copies + v5's own extra-leg and moved-size settings
+FLEET_V5 = [("base", "BASE = v5A-CG-SL today", {})] + [(i, l.replace("v4A-CG", "v5A-CG"), o) for i, l, o in FLEET if i != "base"] + [
+    ("x_off", "extra opposite leg OFF", dict(xq=0.0)),
+    ("xq_05", "extra leg half size", dict(xq=0.5)),
+    ("xhv_09", "extra leg when HV14 >= 0.9 x HV365", dict(xhv=0.9)),
+    ("xhv_11", "extra leg when HV14 >= 1.1 x HV365", dict(xhv=1.1)),
+    ("mv_2", "moved-night trend size 2x (not 3x)", dict(mv5=2)),
+]
+FLEETS = {"v4": dict(title="Night v4A-CG-SL", rule="v4a", copies=FLEET, sdir="", nights="shadow_nights.csv"),
+          "v5": dict(title="Night v5A-CG-SL", rule="v5a", copies=FLEET_V5, sdir="v5", nights="shadow_nights_v5.csv")}
+GROUPS = {"x": "v5 extra opposite leg", "xq": "v5 extra leg size", "xhv": "v5 extra leg switch (HV14 >= HV365)", "mv": "v5 moved-night size (3x)",
+          "sl": "Slope threshold (0.123)", "dist": "Normal distance (2.5%)", "k": "Moved distance (1.4 sigma)",
           "mhv": "Moved switch (HV14 0.283)", "rg": "Quiet-day guard (1.0)", "cg": "Crash guard (2 x ATR)",
           "dec": "Early buy-back (90%)", "bid": "Bid floor ($10)", "boost": "IV boost (1.4)", "t": "Entry time (23:30)"}
 # 6.7-year Deribit backtest of v4A-CG (claude/v4cg-v5cg-fresh-backtest-slope-half-2026-10-29.md), test period after Apr-2024
 REF = dict(trade_rate=0.658, win_rate=0.981, flag_rate=0.164, moved_rate=0.711)
+REFS = {"v4": REF, "v5": dict(trade_rate=0.717, win_rate=0.979, flag_rate=0.164, moved_rate=0.711)}
 ACC_Q = [(-0.228, 5), (-0.094, 25), (-0.002, 50), (0.084, 75), (0.121, 83), (0.222, 95)]
 
 def rel2330(now):
@@ -68,13 +81,15 @@ def night_day(now):
     return (now - dt.timedelta(days=1) if now.hour < 12 else now).strftime("%Y-%m-%d")
 
 class Shadow(Night):
-    def __init__(self, sid, label, over, base_qty):
-        self.sid, self.label = sid, label
-        self.P = dict(BASE, **over)
+    def __init__(self, sid, label, over, base_qty, fleet="v4"):
+        F = FLEETS[fleet]
+        self.sid, self.label, self.fleet = sid, label, fleet
+        self.P = dict(BASE, rule=F["rule"], **over)
         Night.__init__(self, "v4asl", base_qty, HOME)
-        self.lab = "SHADOW " + sid
-        self.state_path = os.path.join(SDIR, "%s.json" % sid)
-        self.csv_path = os.path.join(LDIR, "trades_%s.csv" % sid)
+        self.lab = "SHADOW %s %s" % (fleet, sid)
+        self.state_path = os.path.join(SDIR, F["sdir"], "%s.json" % sid)
+        self.csv_path = os.path.join(LDIR, F["sdir"], "trades_%s.csv" % sid)
+        self.nights_csv = os.path.join(HOME, "logs", F["nights"])
         self.S = dict(night=None, exp=0, legs=[], fired=[], picks={}, cg={"PE": {}, "CE": {}}, next_id=1,
                       total_pnl=0.0, nights=0, window_closed=None)
         self.load()
@@ -98,12 +113,18 @@ class Shadow(Night):
             return []
         side = "PE" if ind["c1"] > ind["sma50"] else "CE"
         moved = self.is_moved(ind)
-        q = base * (2 if moved else 1) if main else base
-        return [dict(key="trend", side=side, kind="main" if main else "quiet", qty=q, pk="m" if moved else "n")]
+        mult = 2 if P["rule"] == "v4a" else P["mv5"]
+        q = base * (mult if moved else 1) if main else base
+        out = [dict(key="trend", side=side, kind="main" if main else "quiet", qty=q, pk="m" if moved else "n")]
+        if P["rule"] == "v5a" and P["xq"] > 0 and ind.get("hv365") and ind["hv14"] >= P["xhv"] * ind["hv365"]:
+            out.append(dict(key="extra", side="CE" if side == "PE" else "PE", kind="extra", qty=base * P["xq"], pk="m" if moved else "n"))
+        return out
 
     def boost_qty(self, ind):
         if self.P["iv_k"] is None or abs(ind["c1"] / ind["c2"] - 1) < self.P["main_mv"]:
             return 0
+        if self.P["rule"] == "v5a":
+            return 0 if self.is_moved(ind) else self.size_base(ind) * 0.5
         return self.size_base(ind) * (1 if self.is_moved(ind) else 0.5)
 
     def picks(self, spot, hv14, ch):
@@ -230,8 +251,8 @@ class Shadow(Night):
         legs = [l for l in self.S["legs"] if l.get("pnl") is not None]
         pnl = sum(l["pnl"] for l in legs)
         m = self.S.get("meta") or {}
-        new = not os.path.exists(NIGHTS_CSV)
-        with open(NIGHTS_CSV, "a", newline="") as fh:
+        new = not os.path.exists(self.nights_csv)
+        with open(self.nights_csv, "a", newline="") as fh:
             w = csv.writer(fh)
             if new:
                 w.writerow(NCOLS)
@@ -282,10 +303,13 @@ class Feed:
             ch = [o for o in parse_chain(self.d.public("/v2/tickers", base)["result"]) if o["exp"] == exp_ts]
         return ch
 
-def make_fleet(base_qty):
-    os.makedirs(SDIR, exist_ok=True)
-    os.makedirs(LDIR, exist_ok=True)
-    return [Shadow(i, l, o, base_qty) for i, l, o in FLEET]
+def make_fleet(base_qty, which=("v4", "v5")):
+    out = []
+    for f in which:
+        os.makedirs(os.path.join(SDIR, FLEETS[f]["sdir"]), exist_ok=True)
+        os.makedirs(os.path.join(LDIR, FLEETS[f]["sdir"]), exist_ok=True)
+        out += [Shadow(i, l, o, base_qty, f) for i, l, o in FLEETS[f]["copies"]]
+    return out
 
 def tick(fleet, feed, cache, now_ts):
     now = dt.datetime.fromtimestamp(now_ts, IST)
@@ -335,10 +359,10 @@ def run():
         time.sleep(wait)
 
 # ---------------------------------------------------------------- health analysis + page
-def read_nights():
+def read_nights(f="v4"):
     out = {}
     try:
-        for r in csv.DictReader(open(NIGHTS_CSV)):
+        for r in csv.DictReader(open(os.path.join(HOME, "logs", FLEETS[f]["nights"]))):
             out.setdefault(r["id"], {})[r["night"]] = r
     except Exception:
         pass
@@ -379,7 +403,7 @@ def compare(nights, sid, window=60):
         st = "same"
     return dict(n=n, total=tot_v, diff=sum(d), t=t, worst=worst_v, status=st)
 
-def base_health(nights, window=60):
+def base_health(nights, window=60, REF=REF):
     b = nights.get("base", {})
     rows = [b[k] for k in sorted(b)[-window:]]
     n = len(rows)
@@ -401,12 +425,15 @@ def base_health(nights, window=60):
     chk("Moved nights (HV14 high)", sum(1 for r in rows if r["moved"] == "1"), n, REF["moved_rate"])
     return out
 
-def page_html():
+def page_html(f="v4"):
+    f = f if f in FLEETS else "v4"
+    F = FLEETS[f]
+    FLEET = F["copies"]
     E = lambda s: str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    nights = read_nights()
+    nights = read_nights(f)
     acc = None
     try:
-        st = json.load(open(os.path.join(SDIR, "base.json")))
+        st = json.load(open(os.path.join(SDIR, F["sdir"], "base.json")))
         acc = (st.get("meta") or {}).get("sl_acc")
     except Exception:
         st = {}
@@ -420,8 +447,8 @@ def page_html():
          '.b{display:inline-block;border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700}'
          '.ok{background:#dcfce7;color:#166534}.wa{background:#fef3c7;color:#92400e}.bad{background:#fee2e2;color:#991b1b}.gr{background:#e5e8ec;color:#374151}'
          'a{color:#0369a1}</style></head><body><div class="w">'
-         '<p><a href="/">&larr; My Bots</a></p><h1>Parameter health (shadow fleet)</h1>'
-         '<p class="m">' + str(len(FLEET)) + ' paper copies of v4A-CG-SL trade the same live Delta quotes every night, each with ONE value changed. '
+         '<p><a href="/">&larr; My Bots</a></p>' + healthnav.bar(f) + '<h1>Parameter health: ' + F["title"] + '</h1>'
+         '<p class="m">' + str(len(FLEET)) + ' paper copies of ' + F["title"].replace("Night ", "") + ' trade the same live Delta quotes every night, each with ONE value changed. '
          'Paper only, never real orders. Results build up night by night: a verdict needs 15-20 finished nights.</p>']
 
     def badge(s):
@@ -432,7 +459,7 @@ def page_html():
              'Half size when above 0.123.</div>' % ("-" if acc is None else "%.3f" % acc, pct_of(acc)))
     h.append('<div class="row"><b>Is the base strategy behaving like its backtest?</b> (last 60 nights vs 6.7-year test)'
              '<table><tr><th>Check</th><th>Now</th><th>Backtest</th><th>Status</th></tr>')
-    bh = base_health(nights)
+    bh = base_health(nights, REF=REFS[f])
     for name, now_, ref, s in bh:
         h.append("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (E(name), now_, ref, badge(s)))
     if not bh:
@@ -456,12 +483,12 @@ def page_html():
     open_n = 0
     try:
         for i, _, _ in FLEET:
-            s = json.load(open(os.path.join(SDIR, "%s.json" % i)))
+            s = json.load(open(os.path.join(SDIR, F["sdir"], "%s.json" % i)))
             open_n += len([l for l in s.get("legs", []) if not l.get("closed")])
     except Exception:
         pass
-    h.append('<p class="m">Open shadow legs now: %d. Files: logs/shadow_nights.csv, logs/shadow/trades_*.csv. '
-             'Fees included, funding not modelled.</p></div></body></html>' % open_n)
+    h.append('<p class="m">Open shadow legs now: %d. Files: logs/%s, logs/shadow/%strades_*.csv. '
+             'Fees included, funding not modelled.</p></div></body></html>' % (open_n, F["nights"], (F["sdir"] + "/") if F["sdir"] else ""))
     return "".join(h).encode()
 
 def check():
@@ -481,7 +508,7 @@ def check():
             k = pk["%s_%s" % (p["side"].lower(), p["pk"])]
             o = find(ch, p["side"], k) if k not in (0, 9999999) else None
             txt.append("%s %s %s x %.3f bid %s" % (p["kind"], p["side"], k, p["qty"], o["bid"] if o else "-"))
-        print("%-10s %-28s %s" % (s.sid, s.label, "; ".join(txt) or "no trade"))
+        print("%-3s %-10s %-34s %s" % (s.fleet, s.sid, s.label, "; ".join(txt) or "no trade"))
 
 if __name__ == "__main__":
     if "--check" in sys.argv:
