@@ -33,5 +33,19 @@ patch("bot.py", [("        self.maybe_reports(now, mark)\n        self.save()\n"
                   "        self.maybe_reports(now, mark)\n" + HOOK.format(i="        ") + "        self.save()\n"),
                  ("    def handle_squareoff(self):\n        L = self.ladder\n",
                   "    def handle_squareoff(self):\n        L = self.ladder\n" + SQ)])
+# T3 (as Tradetron v9/v10 since 10-Oct): no NEW cycle entry 17:15-17:45 IST (expiry / call roll). The Tradetron-only
+# 05:20-06:00 window (its daily pause) is not needed on the server.
+def patch_t3():
+    p = os.path.join(HOME, "bot.py")
+    s = open(p, encoding="utf-8").read()
+    if "T3 entry window" in s:
+        print("bot.py already has T3"); return
+    a = "        ok = self.high4h is not None and bid >= self.ladder.entry_filter * self.high4h\n"
+    if s.count(a) != 1:
+        raise SystemExit("ANCHOR PROBLEM (T3) - nothing written")
+    s = s.replace(a, a + "        _hm = ist(now).hour * 100 + ist(now).minute  # T3 entry window\n        if 1715 <= _hm < 1745:\n            ok = False\n")
+    open(p, "w", encoding="utf-8").write(s)
+    print("bot.py T3 entry window added")
+patch_t3()
 patch("variants.py", [("            self.maybe_reports(now, mark)\n            self.save()\n",
                        "            self.maybe_reports(now, mark)\n" + HOOK.format(i="            ").replace("log.error", "bot.log.error") + "            self.save()\n")])

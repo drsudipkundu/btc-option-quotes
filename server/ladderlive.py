@@ -212,7 +212,8 @@ def make_live_class(base_cls, key):
                     self._cancel(o)
 
         def entry_logic(self, bid, ask, now):
-            ok = self.high4h is not None and bid >= self.ladder.entry_filter * self.high4h
+            hm = B.ist(now).hour * 100 + B.ist(now).minute
+            ok = self.high4h is not None and bid >= self.ladder.entry_filter * self.high4h and not (1715 <= hm < 1745)
             cur = next((o for o in self.orders.values() if o["tag"] == "entry"), None)
             if cur and (not ok or (now - cur["born"] >= 60 and cur["price"] != bid)):
                 self._cancel(cur)

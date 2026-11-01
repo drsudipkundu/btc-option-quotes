@@ -13,7 +13,7 @@ Rules (as live v9 CALL v3 after 21-Oct-2026):
 Sale retries: if a sale could not start or sold nothing, it is tried again every 30 min until midnight (max 3 tries)."""
 import os, json, csv, time, datetime as dt
 import ssjob
-from nightlogic import fee as opt_fee, next_expiry_ts
+from nightlogic import fee as opt_fee, next_expiry_ts, OI_CAP_USD, OI_FULL_FRAC
 
 HOME = os.environ.get("BOT_HOME", os.path.expanduser("~/deltabot"))
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
@@ -39,7 +39,7 @@ def chain_with_delta(exp_ts, public=None):
         q, g = t.get("quotes") or {}, t.get("greeks") or {}
         out.append(dict(sym=t["symbol"], typ="CE", strike=float(p[2]), exp=exp_ts, bid=f(q.get("best_bid")),
                         ask=f(q.get("best_ask")), mark=f(t.get("mark_price")), delta=f(g.get("delta")),
-                        ro=bool(t.get("oi_reduce_only_mode"))))
+                        ro=bool(t.get("oi_reduce_only_mode")) or f(t.get("oi_value_usd")) >= OI_CAP_USD * OI_FULL_FRAC))
     return out
 
 class CallLeg:
