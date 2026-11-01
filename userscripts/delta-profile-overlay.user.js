@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Delta BTCUSD – Volume profile + Option OI overlay (Sudip)
 // @namespace    sudip.btc.ladder
-// @version      1.9
+// @version      2.0
 // @description  Draws a volume profile (left), estimated liquidation clusters (left-centre), live order-book walls with a readout box (centre-right) and BTC option open interest by strike (right) as horizontal bars on the Delta Exchange BTCUSD chart. Read-only public market data; never places or touches orders.
 // @match        https://www.delta.exchange/app/futures/trade/BTC/BTCUSD*
 // @match        https://india.delta.exchange/app/futures/trade/BTC/BTCUSD*
@@ -44,31 +44,37 @@
     liqOn: true,
     liqStartPct: 24,          // bars start this % from the left edge (just right of the volume profile)
     liqWidthPct: 20,
-    liqBin: 100,              // USD per row (finer)
+    liqBin: 50,               // USD per row (finer)
+    liqNearPct: 4,            // within N % of price the bars get their own scale, so near-price levels are not dwarfed by far ones
+    liqNearLabels: 3,         // label the N biggest rows per side inside that zone
     liqRangePct: 12,
     liqMinPct: 3,             // hide rows below N % of the biggest row
     liqHeatmap: true,         // Coinglass-style bands: from when the cluster formed until now
     liqHeatMinPct: 6,         // only rows at least N % of the biggest get a band
     liqHeatAlpha: [0.06, 0.40],
-    liqBuckets: [[10, 0.35], [25, 0.30], [50, 0.20], [100, 0.15]],   // assumed leverage mix
+    liqBuckets: [[5, 0.06], [10, 0.20], [15, 0.12], [20, 0.12], [25, 0.14], [33, 0.10], [50, 0.10], [75, 0.08], [100, 0.05], [125, 0.03]],   // assumed leverage mix (more levels = also levels close to price)
     liqMmr: 0.004,
     // shades per leverage, lightest = 10x ... darkest = 100x (longs liquidated below price / shorts above)
-    longLevColors: ['255,204,128', '255,138,101', '244,81,30', '183,28,28'],
-    shortLevColors: ['200,230,201', '129,199,132', '56,142,60', '27,94,32'],
+    longLevColors: ['255,236,179', '255,204,128', '255,183,77', '255,152,0', '255,112,67', '244,81,30', '216,67,21', '191,54,12', '183,28,28', '136,14,14'],
+    shortLevColors: ['220,237,200', '200,230,201', '165,214,167', '129,199,132', '102,187,106', '67,160,71', '56,142,60', '46,125,50', '27,94,32', '10,60,20'],
     liqBarAlpha: 0.7,
     liqLabelsTop: 4,          // label the N biggest long and short rows
     // live order book (Delta public L2 book) - refreshed often, separate from the slow layers above
     bookOn: true,
     bookSec: 15,              // refresh every N seconds
     bookDepth: 1000,          // levels per side requested (about +-2.4 % of price)
-    bookBin: 25,              // USD per row
-    bookRangePct: 1.2,        // show rows within +-N % of price
-    bookMinPct: 15,           // hide rows below N % of the biggest row
+    bookBin: 10,              // USD per row
+    bookRangePct: 1.0,        // show rows within +-N % of price
+    bookMinPct: 6,            // hide rows below N % of the biggest row
     bookGapBars: 1,           // walls start this many candles right of the current candle
-    bookWidthBars: 5,         // longest wall = this many candles long (needs that much empty space on the right: drag the chart left)
+    bookWidthBars: 8,         // longest wall = this many candles long (needs that much empty space on the right: drag the chart left)
     bidColor: 'rgba(38,166,154,0.55)',
     askColor: 'rgba(239,83,80,0.55)',
-    bookLabelsTop: 2,         // label the N biggest bid and ask rows
+    bidNew: 'rgba(120,255,220,0.95)',   // brighter piece = added since about a minute ago; outline = eaten or pulled
+    askNew: 'rgba(255,170,160,0.95)',
+    bookChgSec: 60,           // compare with the book about N seconds ago
+    bookChgPct: 3,            // a change counts when it is at least N % of the biggest row
+    bookLabelsTop: 3,         // label the N biggest bid and ask rows
     bookImbPct: 1,            // book imbalance measured within +-N % of price
     bookTopN: 10,             // 'near' imbalance uses the best N levels each side
     bookPocLine: true,        // amber dashed line at the liquidity POC (biggest resting row)
@@ -217,28 +223,31 @@
       try {
         if (!spot) { const tk = await j(`${CFG.api}/tickers/BTCUSD`); spot = +tk.mark_price || spot; }
         const rows = (await liquidation()).filter(r => Math.abs((r.b + 0.5) * CFG.liqBin / spot - 1) * 100 <= CFG.liqRangePct);
-        const max = Math.max(1e-9, ...rows.map(r => r.tot));
+        const near = r => Math.abs((r.b + 0.5) * CFG.liqBin / spot - 1) * 100 <= CFG.liqNearPct;
+        const max = Math.max(1e-9, ...rows.map(r => r.tot)), maxN = Math.max(1e-9, ...rows.filter(near).map(r => r.tot));
         const topOf = lng => rows.filter(r => r.long === lng).sort((a, b) => b.tot - a.tot).slice(0, CFG.liqLabelsTop);
-        const tops = new Set([...topOf(true), ...topOf(false)]);
+        const nearTop = lng => rows.filter(r => r.long === lng && near(r)).sort((a, b) => b.tot - a.tot).slice(0, CFG.liqNearLabels);
+        const tops = new Set([...topOf(true), ...topOf(false), ...nearTop(true), ...nearTop(false)]);
         const span = vr.to - vr.from, x0 = vr.from + span * CFG.liqStartPct / 100;
         const R = Math.min(vr.to, Math.floor(Date.now() / 1000));
         for (const r of rows) {
-          if (r.tot / max * 100 < CFG.liqMinPct) continue;
+          const mx = near(r) ? maxN : max;
+          if (r.tot / mx * 100 < CFG.liqMinPct) continue;
           const p1 = r.b * CFG.liqBin, p2 = p1 + CFG.liqBin, cols = r.long ? CFG.longLevColors : CFG.shortLevColors;
           // heatmap band behind the candles, from the size-weighted time the cluster formed until now
-          if (CFG.liqHeatmap && r.tot / max * 100 >= CFG.liqHeatMinPct) {
+          if (CFG.liqHeatmap && r.tot / mx * 100 >= CFG.liqHeatMinPct) {
             const t0 = Math.max(vr.from, Math.round(r.ts / r.tot)), [a0, a1] = CFG.liqHeatAlpha;
-            const al = a0 + (a1 - a0) * Math.pow(r.tot / max, 0.8);
+            const al = a0 + (a1 - a0) * Math.pow(r.tot / mx, 0.8);
             if (t0 < R) c.createMultipointShape([{ time: t0, price: p1 }, { time: R, price: p2 }], {
               shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
-              overrides: { backgroundColor: `rgba(${cols[2]},${al.toFixed(2)})`, color: 'rgba(0,0,0,0)', fillBackground: true, linewidth: 0, text: TAG, showLabel: false } });
+              overrides: { backgroundColor: `rgba(${cols[Math.min(5, cols.length - 1)]},${al.toFixed(2)})`, color: 'rgba(0,0,0,0)', fillBackground: true, linewidth: 0, text: TAG, showLabel: false } });
           }
           // side profile: one segment per leverage, stacked left to right (10x lightest ... 100x darkest)
           let x = x0;
-          const totLen = span * (r.tot / max) * CFG.liqWidthPct / 100;
+          const totLen = span * (r.tot / mx) * CFG.liqWidthPct / 100;
           r.lev.forEach((q, i) => {
             if (q <= 0) return;
-            const len = Math.max(totLen * q / r.tot, span * 0.002), last = i === r.lev.length - 1 || r.lev.slice(i + 1).every(z => z <= 0);
+            const len = Math.max(totLen * q / r.tot, span * 0.003), last = i === r.lev.length - 1 || r.lev.slice(i + 1).every(z => z <= 0);
             const lab = last && tops.has(r) ? `${r.long ? 'Long' : 'Short'} liq ${p1 + CFG.liqBin / 2} ~${r.tot.toFixed(0)} BTC` : '';
             c.createMultipointShape([{ time: Math.round(x), price: p1 }, { time: Math.round(x + len), price: p2 }], {
               shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
@@ -267,12 +276,15 @@
       if ((m = /^(\d+)h$/i.exec(r))) return +m[1] * 3600; } catch (e) {}
     return 3600;
   }
-  function bbar(c, vr, frac, p1, p2, color, text) {
+  const bookHist = [];   // recent book snapshots, to show what was added or pulled
+  const BL = (iv, frac) => Math.max(iv * CFG.bookWidthBars * frac, iv * 0.4);
+  function bbar(c, vr, frac, p1, p2, color, text, opt) {
     const iv = ivSec(c), last = Math.floor(Date.now() / 1000 / iv) * iv;   // open time of the current candle
-    const a = last + iv * CFG.bookGapBars, len = Math.max(iv * CFG.bookWidthBars * frac, iv * 0.5);
-    return c.createMultipointShape([{ time: Math.round(a), price: p1 }, { time: Math.round(a + len), price: p2 }], {
+    opt = opt || {};
+    const a = last + iv * CFG.bookGapBars, len = BL(iv, frac), a0 = opt.from != null ? a + BL(iv, opt.from) : a;
+    return c.createMultipointShape([{ time: Math.round(a0), price: p1 }, { time: Math.round(a + len), price: p2 }], {
       shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
-      overrides: { backgroundColor: color, color: 'rgba(0,0,0,0)', fillBackground: true, linewidth: 0,
+      overrides: { backgroundColor: color, color: opt.outline ? color : 'rgba(0,0,0,0)', fillBackground: !opt.outline, linewidth: opt.outline ? 1 : 0,
                    text: TAGB + (text || ''), showLabel: !!text, textColor: '#e0e0e0', fontSize: 10,
                    horzLabelsAlign: 'left', vertLabelsAlign: 'middle' } });
   }
@@ -308,10 +320,30 @@
       for (const [b, q] of bidRows) if (q > pv) { pv = q; poc = b; pSide = 'bid'; }
       for (const [b, q] of askRows) if (q > pv) { pv = q; poc = b; pSide = 'ask'; }
       clearBook(c);
-      const mk = (m, color, tops, side) => { for (const [b, q] of m) if (q / max * 100 >= CFG.bookMinPct)
-        bbar(c, vr, q / max, b * CFG.bookBin, (b + 1) * CFG.bookBin, color,
-             tops.has(b) ? `${q.toFixed(0)} BTC` : ''); };
-      mk(bidRows, CFG.bidColor, tb, 'Bid wall'); mk(askRows, CFG.askColor, ta, 'Ask wall');
+      const nowT = Date.now(); bookHist.push({ t: nowT, bidRows, askRows });
+      while (bookHist.length > 2 && nowT - bookHist[1].t > CFG.bookChgSec * 1000 + 20000) bookHist.shift();
+      const old = bookHist.length > 1 && nowT - bookHist[0].t >= 20000 ? bookHist[0] : null;
+      const thr = CFG.bookChgPct / 100 * max, items = [];
+      const collect = (m, pm, color, newCol, tops) => {
+        for (const [b, q] of m) if (q / max * 100 >= CFG.bookMinPct) {
+          const p0 = pm ? (pm.get(b) || 0) : q, dq = q - p0, top = tops.has(b), changed = !!pm && Math.abs(dq) > thr;
+          items.push({ b, q, p0, dq, color, newCol, changed, pr: (top ? 1e6 : 0) + Math.abs(dq) + q, want: top || (!!pm && Math.abs(dq) > 3 * thr),
+                       text: `${q.toFixed(0)} BTC` + (changed ? ` (${dq > 0 ? '+' : ''}${dq.toFixed(0)})` : '') });
+        }
+        if (pm) for (const [b, p0] of pm) if (!m.has(b) && p0 > 4 * thr) items.push({ b, q: 0, p0, dq: -p0, color, newCol, pulled: true, pr: p0, want: true, text: `pulled ${p0.toFixed(0)}` });
+      };
+      collect(bidRows, old && old.bidRows, CFG.bidColor, CFG.bidNew, tb); collect(askRows, old && old.askRows, CFG.askColor, CFG.askNew, ta);
+      let sep = mid * 0.0004;   // minimum price distance between two labels (about 11 px)
+      try { const r = c.getPanes()[0].getRightPriceScales()[0].getVisiblePriceRange(), h = c.getPanes()[0].getHeight(); if (r && h > 50) sep = (r.to - r.from) / h * 11; } catch (e) {}
+      const used = [], chosen = new Set();
+      items.filter(x => x.want).sort((a, b) => b.pr - a.pr).slice(0, 14).forEach(x => { const y = (x.b + 0.5) * CFG.bookBin; if (used.some(u => Math.abs(u - y) < sep)) return; used.push(y); chosen.add(x); });
+      for (const x of items) {
+        const p1 = x.b * CFG.bookBin, p2 = (x.b + 1) * CFG.bookBin, lab = chosen.has(x) ? x.text : '';
+        if (x.pulled) { bbar(c, vr, x.p0 / max, p1, p2, x.newCol, lab, { outline: true }); continue; }
+        bbar(c, vr, x.q / max, p1, p2, x.color, lab);
+        if (x.changed && x.dq > 0) bbar(c, vr, x.q / max, p1, p2, x.newCol, '', { from: x.p0 / max });      // added since about a minute ago
+        if (x.changed && x.dq < 0) bbar(c, vr, x.p0 / max, p1, p2, x.newCol, '', { outline: true, from: x.q / max });   // eaten or pulled
+      }
       if (CFG.bookPocLine && poc != null) {
         const pp = poc * CFG.bookBin + CFG.bookBin / 2;
         c.createShape({ time: Math.round(vr.from + (vr.to - vr.from) * 0.5), price: pp }, {
