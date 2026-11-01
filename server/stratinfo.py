@@ -67,7 +67,7 @@ def _results(sid):
     try:
         if S[sid]["kind"] == "night":
             st = json.load(open(os.path.join(HOME, "state", "night_%s.json" % sid)))
-            return "%.2f USD over %d finished nights (fees included)" % (st.get("total_pnl", 0.0), st.get("nights", 0))
+            return "%.2f USD so far (fees included; paper)" % st.get("total_pnl", 0.0)
         f = "trades_paper.csv" if sid == "ladder" else "trades_%s.csv" % sid
         tot, n = 0.0, 0
         for r in csv.DictReader(open(os.path.join(HOME, "logs", f))):
