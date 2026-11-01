@@ -1,4 +1,4 @@
-/* My Bots chart page overlay (v1.2, 28-Oct-2026): same layers as the Delta userscript v1.9, drawn on a canvas over the lightweight-charts chart.
+/* My Bots chart page overlay (v1.3, 1-Nov-2026): same layers as the Delta userscript v1.9, drawn on a canvas over the lightweight-charts chart.
    Volume profile (left), estimated liquidation clusters (left-centre), BTC option OI (right), live order-book walls just right of the
    current candle, liquidity POC line, book readout box, ladder-level wall check (on the bot's own green 'buy' lines).
    Read-only public data. Loaded by chartpage.py via one <script> tag; needs the page globals chart, cs, sym, res, RES, light, wrap. */
@@ -12,15 +12,17 @@
     vpColor: 'rgba(158,158,158,0.30)', vpPocColor: 'rgba(255,193,7,0.55)',
     oiOn: true, oiMaxDays: 7, oiRangePct: 12, oiWidthPct: 22,
     callColor: 'rgba(244,67,54,0.45)', putColor: 'rgba(0,150,136,0.45)', oiLabelsTop: 3, oiMinPct: 8,
-    liqOn: true, liqStartPct: 24, liqWidthPct: 20, liqBin: 100, liqRangePct: 12, liqMinPct: 3,
+    liqOn: true, liqStartPct: 24, liqWidthPct: 20, liqBin: 50, liqRangePct: 12, liqMinPct: 3,
+    liqNearPct: 3, liqNearLabels: 2,   // within 3% of price the bars get their own scale, so near-price levels are not dwarfed by far ones
     liqHeatmap: true, liqHeatMinPct: 6, liqHeatAlpha: [0.06, 0.40],
-    liqBuckets: [[10, 0.35], [25, 0.30], [50, 0.20], [100, 0.15]], liqMmr: 0.004,
-    longLevColors: ['255,204,128', '255,138,101', '244,81,30', '183,28,28'],
-    shortLevColors: ['200,230,201', '129,199,132', '56,142,60', '27,94,32'],
+    liqBuckets: [[5, 0.06], [10, 0.20], [15, 0.12], [20, 0.12], [25, 0.14], [33, 0.10], [50, 0.10], [75, 0.08], [100, 0.05], [125, 0.03]], liqMmr: 0.004,
+    longLevColors: ['255,236,179', '255,204,128', '255,183,77', '255,152,0', '255,112,67', '244,81,30', '216,67,21', '191,54,12', '183,28,28', '136,14,14'],
+    shortLevColors: ['220,237,200', '200,230,201', '165,214,167', '129,199,132', '102,187,106', '67,160,71', '56,142,60', '46,125,50', '27,94,32', '10,60,20'],
     liqBarAlpha: 0.7, liqLabelsTop: 4,
-    bookOn: true, bookSec: 15, bookDepth: 1000, bookBin: 25, bookRangePct: 1.2, bookMinPct: 15,
-    bookGapBars: 1, bookWidthBars: 5,
-    bidColor: 'rgba(38,166,154,0.55)', askColor: 'rgba(239,83,80,0.55)', bookLabelsTop: 2,
+    bookOn: true, bookSec: 15, bookDepth: 1000, bookBin: 10, bookRangePct: 1.0, bookMinPct: 6,
+    bookGapBars: 1, bookWidthBars: 8,
+    bookChgSec: 60, bookChgPct: 3,   // compare with the book about 60 s ago: brighter = added, outline = pulled/eaten
+    bidColor: 'rgba(38,166,154,0.55)', askColor: 'rgba(239,83,80,0.55)', bidNew: 'rgba(120,255,220,0.95)', askNew: 'rgba(255,170,160,0.95)', bookLabelsTop: 3,
     bookImbPct: 1, bookTopN: 10, bookPocLine: true,
     ladderCheck: true, ladderTolPct: 0.1, ladderStrong: 1.5, contractBtc: 0.001,
   };
@@ -185,6 +187,8 @@
       }
       S.book = { bb, ba, mid, spread, bidRows, askRows, max, tb: topKeys(bidRows), ta: topKeys(askRows), B, A,
                  imbFull: (B - A) / (B + A), imbNear: (nb - na) / (nb + na), poc, pv, pSide };
+      const nowT = Date.now(); (S.hist = S.hist || []).push({ t: nowT, bidRows, askRows }); while (S.hist.length > 2 && nowT - S.hist[1].t > CFG.bookChgSec * 1000 + 20000) S.hist.shift();
+      const old = S.hist.length > 1 ? S.hist[0] : null; S.book.prev = old && nowT - old.t >= 20000 ? old : null;
       S.ladder = ladder; S.ver++;
     } catch (e) { console.warn('bco book', e); } finally { bookBusy = false; }
   }
@@ -249,18 +253,21 @@
     // liquidation clusters
     if (S.liq && S.spot) {
       const rows = S.liq.filter(r => Math.abs((r.b + 0.5) * CFG.liqBin / S.spot - 1) * 100 <= CFG.liqRangePct);
-      const max = Math.max(1e-9, ...rows.map(r => r.tot));
+      const near = r => Math.abs((r.b + 0.5) * CFG.liqBin / S.spot - 1) * 100 <= CFG.liqNearPct;
+      const max = Math.max(1e-9, ...rows.map(r => r.tot)), maxN = Math.max(1e-9, ...rows.filter(near).map(r => r.tot));
+      const mxOf = r => (near(r) ? maxN : max);
       const topOf = lng => rows.filter(r => r.long === lng).sort((a, b) => b.tot - a.tot).slice(0, CFG.liqLabelsTop);
-      const tops = new Set([...topOf(true), ...topOf(false)]);
+      const nearTop = lng => rows.filter(r => r.long === lng && near(r)).sort((a, b) => b.tot - a.tot).slice(0, CFG.liqNearLabels);
+      const tops = new Set([...topOf(true), ...topOf(false), ...nearTop(true), ...nearTop(false)]);
       const x0 = plotW * CFG.liqStartPct / 100;
       for (const r of rows) {
-        if (r.tot / max * 100 < CFG.liqMinPct) continue;
+        const mx = mxOf(r); if (r.tot / mx * 100 < CFG.liqMinPct) continue;
         const p1 = r.b * CFG.liqBin, p2 = p1 + CFG.liqBin, cols = r.long ? CFG.longLevColors : CFG.shortLevColors;
-        if (CFG.liqHeatmap && r.tot / max * 100 >= CFG.liqHeatMinPct) {
-          const [a0, a1] = CFG.liqHeatAlpha, al = a0 + (a1 - a0) * Math.pow(r.tot / max, 0.8);
-          R(X(Math.round(r.ts / r.tot)), p1, xLast, p2, `rgba(${cols[2]},${al.toFixed(2)})`);
+        if (CFG.liqHeatmap && r.tot / mx * 100 >= CFG.liqHeatMinPct) {
+          const [a0, a1] = CFG.liqHeatAlpha, al = a0 + (a1 - a0) * Math.pow(r.tot / mx, 0.8);
+          R(X(Math.round(r.ts / r.tot)), p1, xLast, p2, `rgba(${cols[Math.min(5, cols.length - 1)]},${al.toFixed(2)})`);
         }
-        let x = x0; const totLen = plotW * (r.tot / max) * CFG.liqWidthPct / 100;
+        let x = x0; const totLen = plotW * (r.tot / mx) * CFG.liqWidthPct / 100;
         r.lev.forEach((q, i) => { if (q <= 0) return;
           const len = Math.max(totLen * q / r.tot, plotW * 0.002);
           R(x, p1, x + len, p2, `rgba(${cols[i]},${CFG.liqBarAlpha})`); x += len; });
@@ -281,11 +288,20 @@
     const bk = S.book;
     if (bk) {
       const xs = xLast + spacing * CFG.bookGapBars;
-      const wall = (m, color, tops) => { for (const [b, q] of m) if (q / bk.max * 100 >= CFG.bookMinPct) {
-        const len = Math.max(spacing * CFG.bookWidthBars * (q / bk.max), spacing * 0.5);
-        R(xs, b * CFG.bookBin, xs + len, (b + 1) * CFG.bookBin, color);
-        if (tops.has(b)) label(`${q.toFixed(0)} BTC`, xs + 2, (b + 0.5) * CFG.bookBin); } };
-      wall(bk.bidRows, CFG.bidColor, bk.tb); wall(bk.askRows, CFG.askColor, bk.ta);
+      const LEN = q => Math.max(spacing * CFG.bookWidthBars * (q / bk.max), spacing * 0.4);
+      const outline = (x1, x2, b, col) => { const ya = Y(b * CFG.bookBin), yb = Y((b + 1) * CFG.bookBin); if (ya == null || yb == null) return;
+        g.strokeStyle = col; g.lineWidth = 1; g.strokeRect(Math.min(x1, x2) + 0.5, Math.min(ya, yb) + 0.5, Math.abs(x2 - x1), Math.max(1, Math.abs(yb - ya) - 1)); };
+      const wall = (m, pm, color, newCol, tops) => {
+        const thr = CFG.bookChgPct / 100 * bk.max;
+        for (const [b, q] of m) if (q / bk.max * 100 >= CFG.bookMinPct) {
+          const len = LEN(q), p0 = pm ? (pm.get(b) || 0) : q, dq = q - p0;
+          R(xs, b * CFG.bookBin, xs + len, (b + 1) * CFG.bookBin, color);
+          if (pm && dq > thr) R(xs + LEN(p0), b * CFG.bookBin, xs + len, (b + 1) * CFG.bookBin, newCol);          // added since ~1 min ago
+          if (pm && dq < -thr) outline(xs + len, xs + LEN(p0), b, newCol);                                      // partly eaten or pulled
+          if (tops.has(b) || (pm && Math.abs(dq) > 3 * thr)) label(`${q.toFixed(0)} BTC` + (pm && Math.abs(dq) > thr ? ` (${dq > 0 ? '+' : ''}${dq.toFixed(0)})` : ''), xs + Math.max(len, spacing) + 3, (b + 0.5) * CFG.bookBin); }
+        if (pm) for (const [b, p0] of pm) if (!m.has(b) && p0 > 4 * thr) { outline(xs, xs + LEN(p0), b, newCol); label(`pulled ${p0.toFixed(0)}`, xs + LEN(p0) + 3, (b + 0.5) * CFG.bookBin); } };
+      const pv_ = bk.prev;
+      wall(bk.bidRows, pv_ && pv_.bidRows, CFG.bidColor, CFG.bidNew, bk.tb); wall(bk.askRows, pv_ && pv_.askRows, CFG.askColor, CFG.askNew, bk.ta);
       if (CFG.bookPocLine && bk.poc != null) {
         const pp = bk.poc * CFG.bookBin + CFG.bookBin / 2, y = Y(pp);
         if (y != null) { g.strokeStyle = 'rgba(255,193,7,0.9)'; g.setLineDash([6, 4]); g.lineWidth = 1; g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke(); g.setLineDash([]);
