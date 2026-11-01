@@ -277,20 +277,22 @@
     return 3600;
   }
   const bookHist = [];   // recent book snapshots, to show what was added or pulled
-  const BL = (iv, frac) => Math.max(iv * CFG.bookWidthBars * frac, iv * 0.4);
+  // The chart only keeps times right of the last candle when they sit exactly on a whole candle, so every bar is a whole number of candles long.
+  const BS = f => Math.round(CFG.bookWidthBars * f), BE = f => Math.max(1, BS(f));
   function bbar(c, vr, frac, p1, p2, color, text, opt) {
     const iv = ivSec(c), last = Math.floor(Date.now() / 1000 / iv) * iv;   // open time of the current candle
     opt = opt || {};
-    const a = last + iv * CFG.bookGapBars, len = BL(iv, frac), a0 = opt.from != null ? a + BL(iv, opt.from) : a;
-    return c.createMultipointShape([{ time: Math.round(a0), price: p1 }, { time: Math.round(a + len), price: p2 }], {
+    const k0 = CFG.bookGapBars + (opt.from != null ? BS(opt.from) : 0), k1 = CFG.bookGapBars + BE(frac);
+    if (k1 <= k0) return null;
+    return c.createMultipointShape([{ time: last + iv * k0, price: p1 }, { time: last + iv * k1, price: p2 }], {
       shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
       overrides: { backgroundColor: color, color: opt.outline ? color : 'rgba(0,0,0,0)', fillBackground: !opt.outline, linewidth: opt.outline ? 1 : 0,
                    text: TAGB + (text || ''), showLabel: !!text, textColor: '#e0e0e0', fontSize: 10,
                    horzLabelsAlign: 'left', vertLabelsAlign: 'middle' } });
   }
   function blabel(c, frac, price, text, h) {   // quantity label = a small dark chip (rectangle) right of the bar; text shapes cannot sit in the empty area right of the last candle
-    const iv = ivSec(c), last = Math.floor(Date.now() / 1000 / iv) * iv, a = last + iv * CFG.bookGapBars + BL(iv, frac) + iv * 0.15;
-    return c.createMultipointShape([{ time: Math.round(a), price: price - h / 2 }, { time: Math.round(a + iv * 8), price: price + h / 2 }], {
+    const iv = ivSec(c), last = Math.floor(Date.now() / 1000 / iv) * iv, k0 = CFG.bookGapBars + BE(frac);
+    return c.createMultipointShape([{ time: last + iv * k0, price: price - h / 2 }, { time: last + iv * (k0 + 8), price: price + h / 2 }], {
       shape: 'rectangle', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
       overrides: { backgroundColor: 'rgba(30,34,45,0.95)', backgroundTransparency: 0, color: 'rgba(0,0,0,0)', fillBackground: true, linewidth: 0,
                    text: TAGB + text, showLabel: true, textColor: '#e0e0e0', fontSize: 10, horzLabelsAlign: 'left', vertLabelsAlign: 'middle' } });
