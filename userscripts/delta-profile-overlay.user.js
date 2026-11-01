@@ -288,6 +288,12 @@
                    text: TAGB + (text || ''), showLabel: !!text, textColor: '#e0e0e0', fontSize: 10,
                    horzLabelsAlign: 'left', vertLabelsAlign: 'middle' } });
   }
+  function blabel(c, frac, price, text) {   // the quantity label is its own text shape (a rectangle's own label is clipped when the row is thin)
+    const iv = ivSec(c), last = Math.floor(Date.now() / 1000 / iv) * iv, a = last + iv * CFG.bookGapBars;
+    return c.createShape({ time: Math.round(a + BL(iv, frac) + iv * 0.15), price }, {
+      shape: 'text', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
+      overrides: { text: TAGB + text, color: '#e0e0e0', fontsize: 10, fillBackground: false, drawBorder: false, backgroundTransparency: 100 } });
+  }
   function topPrice(c, spot) {
     try { const r = c.getPanes()[0].getRightPriceScales()[0].getVisiblePriceRange(); if (r && r.to) return r.to - (r.to - r.from) * 0.04; } catch (e) {}
     return spot * 1.02;
@@ -339,8 +345,9 @@
       items.filter(x => x.want).sort((a, b) => b.pr - a.pr).slice(0, 14).forEach(x => { const y = (x.b + 0.5) * CFG.bookBin; if (used.some(u => Math.abs(u - y) < sep)) return; used.push(y); chosen.add(x); });
       for (const x of items) {
         const p1 = x.b * CFG.bookBin, p2 = (x.b + 1) * CFG.bookBin, lab = chosen.has(x) ? x.text : '';
-        if (x.pulled) { bbar(c, vr, x.p0 / max, p1, p2, x.newCol, lab, { outline: true }); continue; }
-        bbar(c, vr, x.q / max, p1, p2, x.color, lab);
+        if (x.pulled) { bbar(c, vr, x.p0 / max, p1, p2, x.newCol, '', { outline: true }); if (lab) blabel(c, x.p0 / max, p2, lab); continue; }
+        bbar(c, vr, x.q / max, p1, p2, x.color, '');
+        if (lab) blabel(c, Math.max(x.q, x.p0) / max, p2, lab);
         if (x.changed && x.dq > 0) bbar(c, vr, x.q / max, p1, p2, x.newCol, '', { from: x.p0 / max });      // added since about a minute ago
         if (x.changed && x.dq < 0) bbar(c, vr, x.p0 / max, p1, p2, x.newCol, '', { outline: true, from: x.q / max });   // eaten or pulled
       }
