@@ -42,7 +42,10 @@ LAD_COMMON = dict(
     market="Delta India BTCUSD perpetual future (long only, no leverage)",
     entry="Starts a cycle when price is within 5% of the 4-hour high (entry filter 95%); first buy = entry lot",
     side="Buys only (long). LIFO: the newest lot is sold first",
-    exits="Each lot sells at its own buy price + the gap; the cycle ends when the last lot is sold, then a new cycle starts",
+    exits="Each lot sells at its own buy price + the gap; the cycle ends when the last lot is sold, then a new cycle starts. "
+          "CALL LEG (v9 CALL v3 rules, SMART SELL): from 17:35 sell the next-day call with delta ~0.03 if its strike is > 5% above BTC, "
+          "qty = held lots whose sell target is at/above the strike; extra call (2x, max 0.3 BTC) 17:35-17:50 when yesterday's close <= SMA100, "
+          "extra stopped out at strike x1.05; covered calls bought back lot by lot as covered lots sell; everything bought back 17:20-17:30 on expiry day",
     guards="Brake: no buys beyond the BTC cap. Zone floors (no buys below the last floor). No stop-loss, no forced exit. Resting maker orders (paper fills)")
 S.update({
     "ladder": dict(LAD_COMMON, title="Ladder v9 (paper on server)", kind="ladder",
@@ -73,7 +76,13 @@ def _results(sid):
         for r in csv.DictReader(open(os.path.join(HOME, "logs", f))):
             tot += (float(r.get("pnl_usd") or 0) if r.get("event") == "SELL" else 0.0) - float(r.get("fee_usd") or 0)
             n += r.get("event") == "SELL"
-        return "%.2f USD booked, %d sells (fees included)" % (tot, n)
+        cp = 0.0
+        try:
+            for r in csv.DictReader(open(os.path.join(HOME, "logs", "calls_%s.csv" % sid))):
+                cp += float(r.get("pnl_usd") or 0)
+        except Exception:
+            pass
+        return "%.2f USD booked, %d sells (fees included); call leg %.2f USD" % (tot, n, cp)
     except Exception:
         return "no results yet"
 
