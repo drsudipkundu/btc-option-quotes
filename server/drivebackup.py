@@ -32,7 +32,7 @@ def main():
     from dotenv import load_dotenv
     load_dotenv(os.path.join(HOME, ".env"))
     import bot as B
-    B.Notifier().send("DRIVEBACKUP shadow %s" % day, body)
+    B.Notifier()._send_now("[DeltaBot] DRIVEBACKUP shadow %s" % day, body)  # synchronous (send() uses a daemon thread)
     print("sent", day, len(raw), "bytes")
 
 if __name__ == "__main__":
