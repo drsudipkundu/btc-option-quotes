@@ -48,7 +48,7 @@
     liqNearPct: 4,            // within N % of price the bars get their own scale, so near-price levels are not dwarfed by far ones
     liqNearLabels: 3,         // label the N biggest rows per side inside that zone
     liqRangePct: 12,
-    liqMinPct: 3,             // hide rows below N % of the biggest row
+    liqMinPct: 5,             // hide rows below N % of the biggest row
     liqHeatmap: true,         // Coinglass-style bands: from when the cluster formed until now
     liqHeatMinPct: 6,         // only rows at least N % of the biggest get a band
     liqHeatAlpha: [0.06, 0.40],
