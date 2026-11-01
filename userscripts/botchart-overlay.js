@@ -13,7 +13,7 @@
     oiOn: true, oiMaxDays: 7, oiRangePct: 12, oiWidthPct: 22,
     callColor: 'rgba(244,67,54,0.45)', putColor: 'rgba(0,150,136,0.45)', oiLabelsTop: 3, oiMinPct: 8,
     liqOn: true, liqStartPct: 24, liqWidthPct: 20, liqBin: 50, liqRangePct: 12, liqMinPct: 3,
-    liqNearPct: 3, liqNearLabels: 2,   // within 3% of price the bars get their own scale, so near-price levels are not dwarfed by far ones
+    liqNearPct: 4, liqNearLabels: 3,   // within 3% of price the bars get their own scale, so near-price levels are not dwarfed by far ones
     liqHeatmap: true, liqHeatMinPct: 6, liqHeatAlpha: [0.06, 0.40],
     liqBuckets: [[5, 0.06], [10, 0.20], [15, 0.12], [20, 0.12], [25, 0.14], [33, 0.10], [50, 0.10], [75, 0.08], [100, 0.05], [125, 0.03]], liqMmr: 0.004,
     longLevColors: ['255,236,179', '255,204,128', '255,183,77', '255,152,0', '255,112,67', '244,81,30', '216,67,21', '191,54,12', '183,28,28', '136,14,14'],
@@ -269,7 +269,7 @@
         }
         let x = x0; const totLen = plotW * (r.tot / mx) * CFG.liqWidthPct / 100;
         r.lev.forEach((q, i) => { if (q <= 0) return;
-          const len = Math.max(totLen * q / r.tot, plotW * 0.002);
+          const len = Math.max(totLen * q / r.tot, plotW * 0.003);
           R(x, p1, x + len, p2, `rgba(${cols[i]},${CFG.liqBarAlpha})`); x += len; });
         if (tops.has(r)) label(`${r.long ? 'Long' : 'Short'} liq ${p1 + CFG.liqBin / 2} ~${r.tot.toFixed(0)} BTC`, x + 4, (p1 + p2) / 2);
       }
@@ -291,6 +291,7 @@
       const LEN = q => Math.max(spacing * CFG.bookWidthBars * (q / bk.max), spacing * 0.4);
       const outline = (x1, x2, b, col) => { const ya = Y(b * CFG.bookBin), yb = Y((b + 1) * CFG.bookBin); if (ya == null || yb == null) return;
         g.strokeStyle = col; g.lineWidth = 1; g.strokeRect(Math.min(x1, x2) + 0.5, Math.min(ya, yb) + 0.5, Math.abs(x2 - x1), Math.max(1, Math.abs(yb - ya) - 1)); };
+      const cand = [];   // wall labels are collected, then placed biggest-first without overlapping each other
       const wall = (m, pm, color, newCol, tops) => {
         const thr = CFG.bookChgPct / 100 * bk.max;
         for (const [b, q] of m) if (q / bk.max * 100 >= CFG.bookMinPct) {
@@ -298,10 +299,12 @@
           R(xs, b * CFG.bookBin, xs + len, (b + 1) * CFG.bookBin, color);
           if (pm && dq > thr) R(xs + LEN(p0), b * CFG.bookBin, xs + len, (b + 1) * CFG.bookBin, newCol);          // added since ~1 min ago
           if (pm && dq < -thr) outline(xs + len, xs + LEN(p0), b, newCol);                                      // partly eaten or pulled
-          if (tops.has(b) || (pm && Math.abs(dq) > 3 * thr)) label(`${q.toFixed(0)} BTC` + (pm && Math.abs(dq) > thr ? ` (${dq > 0 ? '+' : ''}${dq.toFixed(0)})` : ''), xs + Math.max(len, spacing) + 3, (b + 0.5) * CFG.bookBin); }
-        if (pm) for (const [b, p0] of pm) if (!m.has(b) && p0 > 4 * thr) { outline(xs, xs + LEN(p0), b, newCol); label(`pulled ${p0.toFixed(0)}`, xs + LEN(p0) + 3, (b + 0.5) * CFG.bookBin); } };
+          if (tops.has(b) || (pm && Math.abs(dq) > 3 * thr)) cand.push({ pr: (tops.has(b) ? 1e6 : 0) + Math.abs(dq) + q, x: xs + Math.max(len, spacing) + 3, p: (b + 0.5) * CFG.bookBin,
+            t: `${q.toFixed(0)} BTC` + (pm && Math.abs(dq) > thr ? ` (${dq > 0 ? '+' : ''}${dq.toFixed(0)})` : '') }); }
+        if (pm) for (const [b, p0] of pm) if (!m.has(b) && p0 > 4 * thr) { outline(xs, xs + LEN(p0), b, newCol); cand.push({ pr: p0, x: xs + LEN(p0) + 3, p: (b + 0.5) * CFG.bookBin, t: `pulled ${p0.toFixed(0)}` }); } };
       const pv_ = bk.prev;
       wall(bk.bidRows, pv_ && pv_.bidRows, CFG.bidColor, CFG.bidNew, bk.tb); wall(bk.askRows, pv_ && pv_.askRows, CFG.askColor, CFG.askNew, bk.ta);
+      { const used = []; cand.sort((a, b) => b.pr - a.pr).slice(0, 14).forEach(c => { const y = Y(c.p); if (y == null || used.some(u => Math.abs(u - y) < 11)) return; used.push(y); label(c.t, c.x, c.p); }); }
       if (CFG.bookPocLine && bk.poc != null) {
         const pp = bk.poc * CFG.bookBin + CFG.bookBin / 2, y = Y(pp);
         if (y != null) { g.strokeStyle = 'rgba(255,193,7,0.9)'; g.setLineDash([6, 4]); g.lineWidth = 1; g.beginPath(); g.moveTo(0, y); g.lineTo(plotW, y); g.stroke(); g.setLineDash([]);
