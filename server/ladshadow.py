@@ -140,6 +140,9 @@ class PLadder(Ladder):
         return P["g"]
 
     def gaps(self):
+        if self.ver == "v11":  # 1-Nov-2026: the choppy switch changes ZONE 1 only (as Tradetron v11); zones 2+ use the normal gap
+            b = [self.base * self.zm[0]] + [self.P["g"] * m for m in self.zm[1:]]
+            return b, [x * self.P["sm"] for x in b]
         b = [self.base_gap() * m for m in self.zm]
         return b, [x * self.P["sm"] for x in b]
 
