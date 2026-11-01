@@ -28,7 +28,7 @@ S = {
                   rules="Slope rule: MA50 slope speed-up (acceleration) above 0.123 on the last completed day -> EVERY sale that night is half size"),
     "nlive": dict(NIGHT_COMMON, title="Night v4A-CG-SL LIVE MONEY", kind="night",
                   size="Base 0.02 BTC (same multiples as v4A-CG-SL). Size guard: max 0.05 BTC per order, 0.15 BTC open",
-                  rules="Slope rule as v4A-CG-SL (half size above 0.123)",
+                  rules="Slope rule: MA50 slope speed-up (acceleration) above 0.123 on the last completed day -> EVERY sale that night is half size",
                   exits=NIGHT_COMMON["exits"] + ". Buy-back pays up to 1.5x the ask; 17:20 exit up to 3x, Delta settles anything left at 17:30",
                   guards=NIGHT_COMMON["guards"] + ". Position check every minute: any mismatch stops new sales"),
     "v5a": dict(NIGHT_COMMON, title="Night v5A-CG", kind="night",
@@ -36,7 +36,7 @@ S = {
                 rules="No slope rule"),
     "v5asl": dict(NIGHT_COMMON, title="Night v5A-CG-SL (slope half)", kind="night",
                   size="Base 0.02 BTC. Main night 1x (moved 3x). Extra opposite leg 1x when HV14 >= HV365. IV boost +0.5x on normal nights",
-                  rules="Slope rule: speed-up above 0.123 -> every sale half size"),
+                  rules="Slope rule: MA50 slope speed-up (acceleration) above 0.123 on the last completed day -> EVERY sale that night is half size"),
 }
 LAD_COMMON = dict(
     market="Delta India BTCUSD perpetual future (long only, no leverage)",
@@ -123,7 +123,7 @@ def page_html():
          'table{border-collapse:collapse;font-size:13px;min-width:600px}td,th{border-bottom:1px solid #e5e8ec;padding:7px 8px;vertical-align:top;text-align:left}'
          'th{background:#1c2430;color:#fff;position:sticky;top:0}td:first-child{font-weight:700;background:#f8fafc;width:150px}'
          '.bar{position:sticky;bottom:0;background:#fff;padding:10px;border-top:1px solid #e5e8ec;display:flex;gap:8px;justify-content:center}'
-         'a{color:#0369a1}</style></head><body><div class="w"><p><a href="/">&larr; My Bots</a></p>'
+         'a{color:#0369a1}tr.diff td{background:#fffbeb}tr.diff td:first-child{background:#fef3c7;border-left:4px solid #f59e0b}tr.same td{color:#94a3b8}mark{background:#fde047;color:#1c2430;padding:0 2px;border-radius:3px}.tag{font-size:10px;font-weight:600;color:#94a3b8;margin-top:3px;text-transform:uppercase}.tag.dt{color:#b45309}.cbar{font-size:13px;padding:4px 2px 10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}</style></head><body><div class="w"><p><a href="/">&larr; My Bots</a></p>'
          '<h1>Strategy details &amp; compare</h1><p class="m">Tap <b>Details</b> to open one strategy. Tick <b>Compare</b> on two or more and press '
          '<b>Compare selected</b> for a side-by-side table. Blue = night option sell, green = ladder, orange = live money. Read-only page.</p>'
          '<div id="cmp"></div>']
@@ -136,13 +136,23 @@ def page_html():
         h.append("</dl></div></div>")
     h.append('<div class="bar"><button class="go" onclick="cmp()">Compare selected</button><button onclick="clr()">Clear</button></div></div>')
     h.append("<script>var D=%s,R=%s;" % (json.dumps(data), json.dumps(ROWS)))
-    h.append("""function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')}
+    h.append(r"""function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')}
 function tg(s){var e=document.getElementById('d_'+s);e.style.display=e.style.display=='none'?'block':'none'}
 function clr(){document.querySelectorAll('.pick').forEach(function(c){c.checked=false});document.getElementById('cmp').innerHTML=''}
+function words(t){return String(t).split(/(\s+)/)}
+function markDiff(t,common){return words(t).map(function(w){if(/^\s+$/.test(w)||!w)return w;return common[w.toLowerCase()]?esc(w):'<mark>'+esc(w)+'</mark>'}).join('')}
+function only(b){document.querySelectorAll('tr.same').forEach(function(r){r.style.display=b?'none':''})}
 function cmp(){var ids=[];document.querySelectorAll('.pick').forEach(function(c){if(c.checked)ids.push(c.value)});
  var o=document.getElementById('cmp');if(!ids.length){o.innerHTML='<p class=m>Tick at least one strategy.</p>';return}
  if(ids.length==1){document.getElementById('d_'+ids[0]).style.display='block';document.getElementById('d_'+ids[0]).scrollIntoView();o.innerHTML='';return}
- var h='<div class=cmp><table><tr><th>&nbsp;</th>';ids.forEach(function(i){h+='<th>'+esc(D[i].title)+'</th>'});h+='</tr>';
- R.forEach(function(r){h+='<tr><td>'+esc(r[1])+'</td>';ids.forEach(function(i){h+='<td>'+esc(D[i].rows[r[0]])+'</td>'});h+='</tr>'});
+ var nd=0,body='';
+ R.forEach(function(r){var v=ids.map(function(i){return String(D[i].rows[r[0]])});
+  var same=v.every(function(x){return x==v[0]});
+  if(same){body+='<tr class=same><td>'+esc(r[1])+'<div class=tag>same</div></td>';v.forEach(function(x){body+='<td>'+esc(x)+'</td>'});body+='</tr>';return}
+  nd++;var cnt={};v.forEach(function(x){var seen={};words(x).forEach(function(w){w=w.toLowerCase();if(/^\s*$/.test(w)||seen[w])return;seen[w]=1;cnt[w]=(cnt[w]||0)+1})});
+  var common={};for(var w in cnt){if(cnt[w]==v.length)common[w]=1}
+  body+='<tr class=diff><td>'+esc(r[1])+'<div class="tag dt">different</div></td>';v.forEach(function(x){body+='<td>'+markDiff(x,common)+'</td>'});body+='</tr>'});
+ var h='<div class=cmp><div class=cbar><b>'+nd+' of '+R.length+' rows differ</b> &middot; yellow rows differ, <mark>marked words</mark> are what changes &middot; <label><input type=checkbox onchange="only(this.checked)"> show only differences</label></div><table><tr><th>&nbsp;</th>';
+ ids.forEach(function(i){h+='<th>'+esc(D[i].title)+'</th>'});h+='</tr>'+body;
  o.innerHTML=h+'</table></div>';o.scrollIntoView()}</script></body></html>""")
     return "".join(h).encode("utf-8")
