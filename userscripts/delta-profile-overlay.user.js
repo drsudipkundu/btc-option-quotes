@@ -292,7 +292,7 @@
     const iv = ivSec(c), last = Math.floor(Date.now() / 1000 / iv) * iv, a = last + iv * CFG.bookGapBars;
     return c.createShape({ time: Math.round(a + BL(iv, frac) + iv * 0.15), price }, {
       shape: 'text', lock: true, disableSelection: true, disableSave: true, disableUndo: true,
-      overrides: { text: TAGB + text, color: '#e0e0e0', fontsize: 10, fillBackground: false, drawBorder: false, backgroundTransparency: 100 } });
+      overrides: { text: TAGB + text, color: '#e0e0e0', fontsize: 10, backgroundColor: 'rgba(30,34,45,0.85)', fillBackground: true, drawBorder: false } });   // dark chip: readable on a light or a dark chart
   }
   function topPrice(c, spot) {
     try { const r = c.getPanes()[0].getRightPriceScales()[0].getVisiblePriceRange(); if (r && r.to) return r.to - (r.to - r.from) * 0.04; } catch (e) {}
