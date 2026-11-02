@@ -161,12 +161,13 @@ class Shadow(SmartSellPaper, Night):
             return False
         changed = False
         dec = self.P["decay"]
-        if not in_entry and dec is not None:
+        if dec is not None:  # 3-Nov-2026: resting limit buy at dec x sale price, filled when a seller offers <= it
             for l in self.open_legs():
                 if l["dir"] == "S":
                     o = find(ch, l["side"], l["strike"])
-                    if o and o["mark"] > 0 and o["mark"] <= dec * l["entry"]:
-                        self._close(now, spot, l, o, "DECAY")
+                    tp = NL.tp_price(l["entry"], dec) if hasattr(NL, "tp_price") else 0
+                    if o and tp > 0 and 0 < o["ask"] <= tp:
+                        self._close_at(now, spot, l, tp, "DECAY")
                         changed = True
         if in_entry and ind and not stopped:
             changed |= self._entries(now, spot, ch, ind, night_day(now))

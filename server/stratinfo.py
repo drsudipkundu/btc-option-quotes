@@ -16,7 +16,7 @@ NIGHT_COMMON = dict(
     entry="23:30-23:58 IST every night. Trades only if yesterday moved at least 0.5% (main night) or its range was big enough (quiet-day guard: high-low >= HV14 daily sigma)",
     side="Previous daily close above SMA50 -> sell a PUT, else sell a CALL (the side away from the trend)",
     strike="Normal night: nearest listed strike 2.5% away. Moved night (HV14 > 0.283): 1.4 x daily sigma away. Skips strikes that Delta has capped (jumps further out, max 1,200 points). Sells only if the BID is at least $10",
-    exits="90% buy-back once the option has lost 90% of its value (checked after midnight); everything left is closed at 17:20 IST next day",
+    exits="90% buy-back as a RESTING limit buy at 10% of the sale price, placed right after the sale (fills only at that price or better; shadow copies use their own decay level); everything left is closed at 17:20 IST next day",
     guards="Crash guard: if BTC moves 2 x ATR14 against the sale, buys the same quantity of an option 4% beyond (insurance). $10 bid floor. One sale per side per night. SMART SELL on every sale: mid-price offer 60 s, then sells into the bids down to 80% of the start bid (never < $10), 3 retries 3 min apart, up to 4 strikes further out, else skip (paper copies: filled only against the real Delta order book)")
 
 S = {

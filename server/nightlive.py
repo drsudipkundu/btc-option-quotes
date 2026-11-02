@@ -5,7 +5,8 @@ sub-account, only when ARMED (state/night_live_cfg.json armed=true, written by `
  SELL : walk-away price = 80% of the bid at the start (never below $10). 1) polite offer at the mid for 60 s;
         2) sell into the bids down to the walk-away price; 3) wait 3 min and retry, 3 retries;
         4) up to 4 strikes further out (bid >= $10, same 80% rule); 5) stop, keep what is sold, skip the rest.
- INSURANCE BUY (crash guard): pay up to 2x the ask at the start, 5 tries; then up to 4 strikes further out; never gives up
+ 90% BUY-BACK: a reduce-only limit buy at 10% of the sale price rests on Delta from the moment of the sale (3-Nov-2026).
+INSURANCE BUY (crash guard): pay up to 2x the ask at the start, 5 tries; then up to 4 strikes further out; never gives up
         (tried again next tick).
  BUY-BACK 90%: buy up to 1.5x the ask (reduce-only); if not filled the leg stays open for the next try / 17:20 exit.
  17:20 EXIT: buy up to 3x the ask (reduce-only), retried every tick until expiry; Delta settles anything left at 17:30.
@@ -83,6 +84,10 @@ class LiveNight(Night):
 
     def check_books(self, where):
         import guard
+        try:
+            self.tp_poll()
+        except Exception as e:
+            self.log("resting buy-back poll failed: %s" % e)
         try:
             diffs = guard.reconcile(self.real_positions(), guard.expected_positions([self]))
         except Exception as e:
@@ -190,6 +195,81 @@ class LiveNight(Night):
                 return fills
         return []
 
+    # ------------------------------------------------ 90% buy-back as a RESTING LIMIT ORDER (3-Nov-2026)
+    def _tp_place(self, leg):
+        """reduce-only buy limit at 10% of the sale price, resting from the moment of the sale"""
+        if leg["dir"] != "S" or leg["closed"] or leg.get("tp_oid"):
+            return
+        leg["tp_try"] = time.time()
+        try:
+            t = self.cl.ticker(leg["sym"])
+            tick = t["tick"] or 0.1
+            px = max(tick, round(math.floor(leg["entry"] * 0.1 / tick + 1e-9) * tick, 8))
+            n = int(round(leg["qty"] / C))
+            r = self.cl.place(leg["sym"], "buy", n, px, True, "tp%d" % (int(time.time() * 10) % 10 ** 9))
+            leg.update(tp_oid=r["id"], tp_px=px, tp_seen=0)
+            self.log("%s resting 90%% buy-back placed: %s x%d @ %s" % (self.lab, leg["sym"], n, px))
+            if r["filled"]:
+                self.tp_poll()
+        except Exception as e:
+            self.notify("%s 90%% buy-back order not placed" % self.lab, "%s: %s (retried every minute)" % (leg["sym"], e))
+
+    def _tp_book(self, now, leg, f, avg, fe):
+        n = int(round(leg["qty"] / C))
+        f = min(f, n)
+        part = f * C
+        share = part / leg["qty"]
+        pnl = (leg["entry"] - avg) * part - leg["fee"] * share - fe
+        self.S["total_pnl"] += pnl
+        if f >= n:
+            leg["closed"], leg["exit"], leg["pnl"] = True, avg, pnl + leg.get("pnl_part", 0.0)
+        else:
+            leg["qty"] = round(leg["qty"] - part, 3)
+            leg["fee"] -= leg["fee"] * share
+            leg["pnl_part"] = leg.get("pnl_part", 0.0) + pnl
+        self.row(now, "EXIT-90PCT", dict(leg, qty=round(part, 3)), avg, fe, pnl, "live resting limit buy-back")
+        self.notify("%s 90%% buy-back filled %s %d contracts @ %.1f" % (self.lab, leg["sym"], f, avg), "pnl %.2f USD (sold @ %.1f)" % (pnl, leg["entry"]))
+
+    def tp_poll(self, now=None):
+        """read the resting buy-back orders; book fills; re-place one that Delta cancelled. returns True if anything changed"""
+        now = now or self.now_fn()
+        changed = False
+        for leg in list(self.open_legs()):
+            if leg["dir"] != "S":
+                continue
+            if not leg.get("tp_oid"):
+                if time.time() - leg.get("tp_try", 0) > 60:
+                    self._tp_place(leg)
+                    changed = True
+                continue
+            r = self.cl.order(leg["tp_oid"])
+            new = r["filled"] - leg.get("tp_seen", 0)
+            if new > 0:
+                self._tp_book(now, leg, new, r["avg"] or leg["tp_px"], r["fee"] * new / max(1, r["filled"]))
+                leg["tp_seen"] = r["filled"]
+                changed = True
+            if r["state"] in ("cancelled", "rejected", "closed") and not leg["closed"]:
+                leg["tp_oid"], leg["tp_seen"] = None, 0
+                changed = True
+        if changed:
+            self.save()
+        return changed
+
+    def _tp_cancel(self, now, leg):
+        try:
+            self.cl.cancel(leg["tp_oid"], leg["sym"])
+        except Exception:
+            pass
+        try:
+            r = self.cl.order(leg["tp_oid"])
+            new = r["filled"] - leg.get("tp_seen", 0)
+            if new > 0:
+                self._tp_book(now, leg, new, r["avg"] or leg["tp_px"], r["fee"] * new / max(1, r["filled"]))
+        except Exception:
+            pass
+        leg["tp_oid"], leg["tp_seen"], leg["tp_try"] = None, 0, time.time() + 10 ** 6  # no re-place after a deliberate cancel
+        self.save()
+
     # ------------------------------------------------ Night hooks
     def _open(self, now, spot, key, kind, side, o, qty, direction, ex_note=""):
         want = int(round(qty / C))
@@ -203,7 +283,7 @@ class LiveNight(Night):
             self.notify("%s order error" % self.lab, "%s %s %s: %s" % ("sell" if direction == "S" else "buy", o["sym"], want, e))
             self.check_books("after error")
             return None
-        first = None
+        first, new_legs = None, []
         for oo, f, avg, fe in fills:
             leg = dict(id=self.S["next_id"], set=key, kind=kind, side=side, sym=oo["sym"], strike=oo["strike"],
                        qty=round(f * C, 3), dir=direction, entry=avg, t=now.isoformat(), closed=False, exit=None, fee=fe)
@@ -213,12 +293,20 @@ class LiveNight(Night):
             self.notify("%s %s %s %d contracts @ %.1f" % (self.lab, "SOLD" if direction == "S" else "BOUGHT", oo["sym"], f, avg),
                         "set=%s kind=%s spot=%.1f fee=%.4f" % (key, kind, spot, fe))
             first = first or leg
+            new_legs.append(leg)
+        if direction == "S":
+            for leg in new_legs:
+                self._tp_place(leg)
         self.save()
         self.check_books("after %s" % ("sale" if direction == "S" else "insurance"))
         return first
 
     def _close(self, now, spot, leg, o, why):
         """real closing order; returns pnl of the part closed, or None if nothing filled (leg stays open)"""
+        if leg.get("tp_oid"):
+            self._tp_cancel(now, leg)
+            if leg["closed"]:
+                return leg.get("pnl")
         n = int(round(leg["qty"] / C))
         cap_mult = self.cfg["ue_cap"] if why in ("UE", "STOP") else self.cfg["bb_cap"]
         t = self.cl.ticker(leg["sym"])
@@ -280,15 +368,10 @@ class LiveNight(Night):
         if not ch:
             return False
         changed = False
-        if hm < 2330:
-            for l in self.open_legs():
-                if l["dir"] == "S":
-                    o = find(ch, l["side"], l["strike"])
-                    if o and o["mark"] > 0 and o["mark"] <= 0.1 * l["entry"]:
-                        changed |= self._close(now, spot, l, o, "90PCT") is not None
-            if self.S["night"] and not self.open_legs() and self.S["legs"] and not self.S.get("finished"):
-                self._finish(now, "closed early (90%)")
-                return True
+        changed |= self.tp_poll(now)
+        if self.S["night"] and not self.open_legs() and self.S["legs"] and not self.S.get("finished"):
+            self._finish(now, "closed early (90% resting buy-back)")
+            return True
         if 2330 <= hm <= 2358 and ind and not stopped and not self.S.get("halt"):
             changed |= self._entries(now, spot, ch, ind, today)
         if (hm >= 2330 or hm < 1715) and self.open_legs() and ind:
