@@ -476,7 +476,10 @@ def page_html(ver=None):
         for c in cs:
             if c["grp"] != grp and c["grp"] != "base":
                 grp = c["grp"]
-                h.append("<tr class='g'><td colspan='12'>%s</td></tr>" % esc(GROUPS.get(grp, grp)))
+                gl = GROUPS.get(grp, grp)
+                if ver == "v13" and grp == "ern":
+                    gl = "ER lookback (12 bars of 4 h = 48 h)"
+                h.append("<tr class='g'><td colspan='12'>%s</td></tr>" % esc(gl))
             dd = daily(c["id"])
             common = [k for k in dd if k in bd]
             diff = [dd[k] - bd[k] for k in common]
