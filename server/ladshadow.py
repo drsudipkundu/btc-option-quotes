@@ -1,4 +1,4 @@
-"""Ladder shadow fleet (31-Oct-2026): parameter-health monitor for the LIFO ladders v9 / v10 / v11 / v12.
+"""Ladder shadow fleet (31-Oct-2026): parameter-health monitor for the LIFO ladders v9 / v10 / v11 / v12 / v13 (v13 added 2-Nov).
 
 PAPER ONLY. One process runs ~57 paper copies of the four ladders on the same live Delta India BTCUSD prices.
 Each version has a BASE copy (today's settings, started fresh with the fleet) and copies that change ONE value
@@ -32,8 +32,9 @@ log = logging.getLogger("ladshadow")
 V9_ZM = [1.0, 1.0, 8.0 / 3, 16.0 / 3, 28.0 / 3]
 V9_FL = [73.54, 60.32, 47.09, 33.86]
 BASE = dict(g=0.75, sm=1.0, deep=1.0, big=0.004, small=0.002, entry=0.002, sma_n=100, filt=0.95, hwin=240,
-            cap=0.28, sp=0.6032, dx=2.0, er_n=10, t=0.2, lo=0.5, t1=0.2, t2=0.4, b=(0.5, 0.75, 1.0))
-VER = {"v9": dict(), "v10": dict(cap=0.40), "v11": dict(), "v12": dict()}
+            cap=0.28, sp=0.6032, dx=2.0, er_n=10, er_res=86400, t=0.2, lo=0.5, t1=0.2, t2=0.4, b=(0.5, 0.75, 1.0))
+VER = {"v9": dict(), "v10": dict(cap=0.40), "v11": dict(), "v12": dict(),
+       "v13": dict(er_res=14400, er_n=12, t1=0.18, t2=0.36)}   # v13 = ER from 4-hour candles, 12 completed bars, matched thresholds
 
 
 def fleet():
@@ -90,6 +91,19 @@ def fleet():
     add("v12", "v12_n14", "ER over 14 days", "ern", er_n=14)
     add("v12", "v12_sm080", "sell gap x0.8", "sm", sm=0.8)
     add("v12", "v12_sm125", "sell gap x1.25", "sm", sm=1.25)
+    # v13 hyperdynamic (2-Nov-2026): 4h ER12, thresholds 0.18/0.36. Lookback / candle copies use thresholds matched on Coinbase 2015-21.
+    add("v13", "v13_base", "BASE = v13 today (4h candles, ER over 12 bars, 0.18/0.36)", "base")
+    add("v13", "v13_n6", "ER over 6 bars (1 day), matched thr 0.25/0.51", "ern", er_n=6, t1=0.253, t2=0.507)
+    add("v13", "v13_n24", "ER over 24 bars (4 days), matched thr 0.13/0.27", "ern", er_n=24, t1=0.134, t2=0.269)
+    add("v13", "v13_n42", "ER over 42 bars (7 days), matched thr 0.10/0.21", "ern", er_n=42, t1=0.099, t2=0.211)
+    add("v13", "v13_thr080", "thresholds -20% (0.14/0.29)", "thr", t1=0.143, t2=0.288)
+    add("v13", "v13_thr120", "thresholds +20% (0.21/0.43)", "thr", t1=0.214, t2=0.432)
+    add("v13", "v13_h1", "1-hour candles, ER over 72 bars, matched thr 0.07/0.15", "res", er_res=3600, er_n=72, t1=0.074, t2=0.152)
+    add("v13", "v13_d5", "daily candles, ER over 5 days, matched thr 0.30/0.57", "res", er_res=86400, er_n=5, t1=0.296, t2=0.573)
+    add("v13", "v13_b1040", "band 1 gap 0.4%", "b1", b=(0.4, 0.75, 1.0))
+    add("v13", "v13_b3125", "band 3 gap 1.25%", "b3", b=(0.5, 0.75, 1.25))
+    add("v13", "v13_sm080", "sell gap x0.8", "sm", sm=0.8)
+    add("v13", "v13_sm125", "sell gap x1.25", "sm", sm=1.25)
     return F
 
 
@@ -98,7 +112,7 @@ GROUPS = {"gap": "Zone-1/2 gap (0.75%)", "deep": "Deep-zone gaps (2/4/7%)", "sp"
           "sma": "SMA length for lot sizing (100)", "filt": "Entry filter (within 5% of the high)",
           "hwin": "Entry high window (4 h)", "cap": "Position cap", "t": "Choppy threshold (ER < 0.2)",
           "lo": "Choppy gap (0.5%)", "ern": "ER lookback (10 days)", "t1": "Band-1 threshold (ER < 0.2)",
-          "t2": "Band-3 threshold (ER > 0.4)", "b1": "Band-1 gap (0.5%)", "b3": "Band-3 gap (1.0%)"}
+          "t2": "Band-3 threshold (ER > 0.4)", "thr": "Both thresholds (0.18 / 0.36)", "res": "ER candle size (4 h)", "b1": "Band-1 gap (0.5%)", "b3": "Band-3 gap (1.0%)"}
 
 
 # ------------------------------------------------------------------ the ladder with parameters
@@ -133,7 +147,7 @@ class PLadder(Ladder):
         P = self.P
         if self.ver == "v11":
             return self.base
-        if self.ver == "v12":
+        if self.ver in ("v12", "v13"):
             if self.er is None:
                 return P["b"][1]
             return P["b"][0] if self.er < P["t1"] else (P["b"][1] if self.er < P["t2"] else P["b"][2])
@@ -194,6 +208,7 @@ class CachedFeed:
         self.tk, self.tk_ts = None, 0
         self.m1, self.m1_ts = {}, 0
         self.d1, self.d1_ts = [], 0
+        self.other = {}          # "1h" / "4h" candle caches (added for v13): res -> (candles, fetched_at)
 
     def ticker(self):
         if time.time() - self.tk_ts > 2:
@@ -206,6 +221,13 @@ class CachedFeed:
             if now - self.d1_ts > 300:
                 self.d1, self.d1_ts = self.f.candles("1d", now - 200 * 86400, now), now
             return [x for x in self.d1 if start <= x["time"] <= end]
+        if res in ("1h", "4h"):
+            sec = 3600 if res == "1h" else 14400
+            c, ts = self.other.get(res, ([], 0))
+            if now - ts > 60:
+                c, ts = self.f.candles(res, now - 200 * sec, now), now
+                self.other[res] = (c, ts)
+            return [x for x in c if start <= x["time"] <= end]
         if now - self.m1_ts > 2:
             for x in self.f.candles("1m", now - 900, now):
                 self.m1[int(x["time"])] = x
@@ -293,7 +315,10 @@ class Copy(bot.Bot):
         if len(cd) >= 20:
             last = cd[-P["sma_n"]:]
             self.sma = sum(float(x["close"]) for x in last) / len(last)
-        n = P["er_n"]
+        n = P["er_n"]; res = P.get("er_res", 86400)
+        if res != 86400:   # v13: ER from 1h / 4h candles, last n COMPLETED bars (Delta pads future candles with the last price)
+            b0 = int(now // res) * res
+            cd = sorted([x for x in self.feed.candles("1h" if res == 3600 else "4h", now - (n + 6) * res, now) if int(x["time"]) < b0], key=lambda x: x["time"])
         if len(cd) >= n + 1:
             cl = [float(x["close"]) for x in cd[-(n + 1):]]
             path = sum(abs(cl[i] - cl[i - 1]) for i in range(1, n + 1))
@@ -347,8 +372,8 @@ def main():
         bid, ask, mark = feed.ticker()
         for c in copies:
             c.refresh_indicators(time.time())
-            print("%-12s %-4s sma%-3d=%s high=%s er=%s gaps=%s cap=%d" % (
-                c.cid, c.ver, c.P["sma_n"], "%.0f" % c.sma if c.sma else None, c.high4h,
+            print("%-12s %-4s sma%-3d=%s high=%s er(%ss x%d)=%s gaps=%s cap=%d" % (
+                c.cid, c.ver, c.P["sma_n"], "%.0f" % c.sma if c.sma else None, c.high4h, c.P.get("er_res", 86400), c.P["er_n"],
                 ("%.3f" % c.ladder.er) if c.ladder.er is not None else None,
                 [round(x, 3) for x in c.ladder.gaps()[0]], c.ladder.brake))
         print("copies:", len(copies), "mark", mark)
@@ -402,7 +427,7 @@ def _tscore(d):
 
 def page_html(ver=None):
     import healthnav
-    ver = ver if ver in ("v9", "v10", "v11", "v12") else "v9"
+    ver = ver if ver in ("v9", "v10", "v11", "v12", "v13") else "v9"
     try:
         S = json.load(open(SUMMARY))
     except Exception:
@@ -432,7 +457,7 @@ def page_html(ver=None):
          ".base td{background:#eef6ff;font-weight:600}.pos{color:#15803d}.neg{color:#b91c1c}.wrap{overflow-x:auto}</style></head><body>",
          "<a href='/'>&larr; My Bots</a>", healthnav.bar(ver),
          "<h2>Ladder health: %s</h2>" % ver.upper(),
-         "<p>%d paper copies of the ladders v9, v10, v11 and v12 trade the same live Delta prices, each with ONE value changed. "
+         "<p>%d paper copies of the ladders v9, v10, v11, v12 and v13 trade the same live Delta prices, each with ONE value changed. "
          "Every version has its own BASE copy, started fresh with the fleet, so all copies of a version are compared from the same start. "
          "Paper only, never real orders. Fees included, funding not modelled. Mark now %.1f. "
          "A ladder needs months (several full cycles) before a verdict; until then every row says <b>collecting</b>.</p>" % (len(S["copies"]), S.get("mark") or 0)]

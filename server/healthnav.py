@@ -2,7 +2,8 @@
 Night-sell fleets live in shadow.py (/health?f=v4|v5), ladder fleets in ladshadow.py (/lhealth?v=v9|v10|v11|v12)."""
 TABS = [("v4", "Night v4A-CG-SL", "/health?f=v4", "night"), ("v5", "Night v5A-CG-SL", "/health?f=v5", "night"),
         ("v9", "Ladder v9", "/lhealth?v=v9", "ladder"), ("v10", "Ladder v10", "/lhealth?v=v10", "ladder"),
-        ("v11", "Ladder v11", "/lhealth?v=v11", "ladder"), ("v12", "Ladder v12", "/lhealth?v=v12", "ladder")]
+        ("v11", "Ladder v11", "/lhealth?v=v11", "ladder"), ("v12", "Ladder v12", "/lhealth?v=v12", "ladder"),
+        ("v13", "Ladder v13", "/lhealth?v=v13", "ladder")]
 COL = {"night": ("#0369a1", "#e0f2fe", "NIGHT OPTION SELL"), "ladder": ("#15803d", "#dcfce7", "BTC LADDER")}
 
 def bar(active):
