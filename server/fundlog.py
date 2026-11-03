@@ -174,7 +174,7 @@ def page_html():
              'td,th{border:1px solid #ddd;padding:4px 8px;text-align:right}th{background:#f1f5f9}td:first-child,th:first-child{text-align:left}'
              '.box{background:#fef3c7;border-radius:8px;padding:8px 12px;margin:8px 0}.neg{color:#b91c1c}.pos{color:#15803d}</style></head><body>')
     h.append('<p><a href="/">&larr; Control page</a></p><h2>BTCUSD funding (Delta India)</h2>')
-    h.append('<div class="box">Rate is per 8 hours, exchanged every minute; longs pay when positive. Cap 0.01 %/8 h = 0.03 %/day = 10.95 %/yr '
+    h.append('<div class="box">Rate is per 8 hours, exchanged every minute; longs pay when positive. Cap 0.01 %%/8 h = 0.03 %%/day = 10.95 %%/yr '
              '(the backtests assume this worst case all the time). Updated %s UTC.</div>' % S.get("updated_utc", "-"))
     if R:
         h.append('<p><b>Now: %.5f %% / 8 h</b> (mark %.0f, %s)</p>' % (R.get("now_pct_8h", 0), R.get("mark", 0), R.get("now_utc", "")))
