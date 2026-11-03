@@ -71,31 +71,39 @@ def parse_ts(s):
 
 
 def fetch_funding(acct, state):
+    """Delta returns newest first and the rows carry no id, so: page backwards with the 'after' cursor (no start_time),
+    stop at the last row already logged (or 30 days back on the first run); key = created_at|amount|product."""
     import liveorders as LO
     cl = LO.Live(acct)
-    st = state.setdefault(acct, {"last_us": int((time.time() - 30 * 86400) * 1e6), "ids": []})
-    seen = set(st.get("ids", []))
-    params = {"transaction_types": "funding", "page_size": 100, "start_time": int(st["last_us"]) + 1}
-    rows, pages = [], 0
+    st = state.setdefault(acct, {})
+    stop_us = int(st.get("last_us") or (time.time() - 30 * 86400) * 1e6)
+    seen = set(st.get("keys", []))
+    params = {"transaction_types": "funding", "page_size": 100}
+    rows, pages, newest = [], 0, stop_us
     while True:
         res = cl._p("GET", "/v2/wallet/transactions", params)
-        for x in res.get("result") or []:
-            if x.get("id") in seen:
-                continue
+        got = res.get("result") or []
+        older = False
+        for x in got:
             t = parse_ts(x.get("created_at")); us = int(t.timestamp() * 1e6)
+            if us < stop_us:
+                older = True; continue
+            k = "%s|%s|%s" % (x.get("created_at"), x.get("amount"), x.get("product_id"))
+            if k in seen:
+                continue
             md = x.get("meta_data") or {}
             rows.append([t.isoformat(), x.get("amount"), x.get("balance"), x.get("product_id"), x.get("asset_symbol"),
-                         md.get("product_symbol", ""), x.get("id")])
-            seen.add(x.get("id")); st["last_us"] = max(int(st["last_us"]), us)
+                         md.get("product_symbol", ""), x.get("id") or x.get("uuid") or ""])
+            seen.add(k); newest = max(newest, us)
         after = (res.get("meta") or {}).get("after"); pages += 1
-        if not after or pages > 50:
+        if older or not got or not after or pages > 60:
             break
         params["after"] = after
     if rows:
         rows.sort()
         append_csv(os.path.join(LOGS, "funding_%s.csv" % acct), ["utc", "amount_usd", "balance_usd", "product_id", "asset", "symbol", "txn_id"], rows)
-    st["ids"] = sorted(seen, key=lambda v: str(v))[-2000:]
-    log.info("%s: %d new funding transactions", acct, len(rows))
+    st["last_us"] = newest; st["keys"] = sorted(seen)[-3000:]
+    log.info("%s: %d new funding transactions (%d pages)", acct, len(rows), pages)
     return len(rows)
 
 
