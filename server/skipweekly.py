@@ -97,7 +97,7 @@ def choose(feed, now_ts, spot, side):
             tgt = spot * (1 + DIST)
             cands = sorted([o for o in ok if o["strike"] >= tgt], key=lambda o: o["strike"])
         if not cands:
-            return None, exp, "no listed strike 12% out (target %.0f)" % tgt
+            return None, exp, "no listed strike 12%% out (target %.0f)" % tgt
         for o in cands[:1 + MAX_FURTHER]:
             if o["bid"] > 0:
                 if o["bid"] < MIN_BID:
