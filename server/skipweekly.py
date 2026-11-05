@@ -23,12 +23,12 @@ import control
 from nightlogic import Night, indicators, fee, is_full, IST, UTC, MIN_BID, SL_THR
 from nightbot import Feed
 
-DIST = 0.10          # 10% out of the money
+DIST = 0.12          # 12% out of the money (Sudip chose option b, 5-Nov 17:58)
 MIN_DAYS = 2         # weekly expiry at least 2 days after the 23:30 entry day
 DECIDE_HM = 2345     # decide after the night copies (and Smart Sell retries) are done
 LAST_HM = 2358
 MAX_FURTHER = 4
-LAB = "SKIP-WEEKLY 10%"
+LAB = "SKIP-WEEKLY 12%"
 STATE_F = os.path.join(HOME, "state", "skipweekly.json")
 CSV_F = os.path.join(HOME, "logs", "trades_skipweekly.csv")
 COLS = ["time_ist", "night", "event", "reason", "side", "symbol", "strike", "expiry", "qty_btc", "price", "fee_usd", "pnl_usd", "note"]
@@ -97,7 +97,7 @@ def choose(feed, now_ts, spot, side):
             tgt = spot * (1 + DIST)
             cands = sorted([o for o in ok if o["strike"] >= tgt], key=lambda o: o["strike"])
         if not cands:
-            return None, exp, "no listed strike 10% out (target %.0f)" % tgt
+            return None, exp, "no listed strike 12% out (target %.0f)" % tgt
         for o in cands[:1 + MAX_FURTHER]:
             if o["bid"] > 0:
                 if o["bid"] < MIN_BID:
@@ -225,7 +225,7 @@ class Runner:
         return "\n".join(out)
 
     def run_forever(self):
-        self.send("%s paper started" % LAB, "Sells a weekly option 10%% out of the money (trend side) on nights the v4 night sell skips; held to expiry. Base %.3f BTC. Paper only." % self.base)
+        self.send("%s paper started" % LAB, "Sells a weekly option 12%% out of the money (trend side) on nights the v4 night sell skips; held to expiry. Base %.3f BTC. Paper only." % self.base)
         fails = 0
         while True:
             try:
