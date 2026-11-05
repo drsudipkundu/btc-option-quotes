@@ -7,7 +7,8 @@ Rule (best balanced setting of the test):
     the nearest Friday expiry at least 2 days away, strike 10% out of the money
     (PUT: highest listed strike <= spot x 0.90; CALL: lowest listed strike >= spot x 1.10; skip strikes Delta has capped),
   * only if the bid we can hit is at least $10 (if the strike has no bid, try up to 4 strikes further out),
-  * size = the night base (NIGHT_BASE, 0.02 BTC); no take-profit, no stop: HELD TO EXPIRY (Friday 17:30 IST),
+  * size = the night base (NIGHT_BASE, 0.02 BTC), HALF when the MA50-slope acceleration > 0.123 (same slope rule as v4A-CG-SL;
+    5-Nov slope test: same profit, worst open loss about halved); no take-profit, no stop: HELD TO EXPIRY (Friday 17:30 IST),
   * settled on the average BTC price of the last 30 minutes before expiry (as Delta settles), fees included.
 Paper only: no real orders ever. State state/skipweekly.json, trades logs/trades_skipweekly.csv, log logs/skipweekly.log.
 CLI: --status | --check (what it would sell right now, no state change)
@@ -19,7 +20,7 @@ HOME = os.environ.get("BOT_HOME", os.path.expanduser("~/deltabot"))
 sys.path.insert(0, HOME)
 import bot as B
 import control
-from nightlogic import Night, indicators, fee, is_full, IST, UTC, MIN_BID
+from nightlogic import Night, indicators, fee, is_full, IST, UTC, MIN_BID, SL_THR
 from nightbot import Feed
 
 DIST = 0.10          # 10% out of the money
@@ -195,7 +196,8 @@ class Runner:
                 self.send("%s: no sale tonight" % LAB, "v4 skipped (%s); %s %s" % (reason, side, note))
                 save(S)
                 return 30
-            q = round(self.base, 3)
+            half = ind.get("sl_acc") is not None and ind["sl_acc"] > SL_THR   # slope rule (5-Nov test): half size when MA50 slope is speeding up
+            q = round(self.base * (0.5 if half else 1.0), 3)
             p = dict(night=today, reason=reason, side=side, sym=o["sym"], strike=o["strike"], exp=exp,
                      exp_ist=dt.datetime.fromtimestamp(exp, IST).strftime("%d-%b %H:%M"), qty=q, entry=o["bid"],
                      fee=fee(spot, o["bid"], q), spot=spot, t=now.isoformat(), closed=False, mark=o["mark"], worst=o["mark"])
@@ -203,8 +205,8 @@ class Runner:
             S["last"] = dict(night=today, what="SOLD %s @ %.1f" % (o["sym"], o["bid"]))
             row(now, today, "SELL", reason, p, o["bid"], p["fee"], 0, note)
             self.send("%s SOLD %s %.3f BTC @ %.1f" % (LAB, o["sym"], q, o["bid"]),
-                      "v4 skipped tonight (%s). Trend side %s, spot %.1f, %s; mark %.1f; held to expiry %s IST" % (
-                          reason, side, spot, note, o["mark"], p["exp_ist"]))
+                      "v4 skipped tonight (%s). Trend side %s, spot %.1f, %s; mark %.1f; held to expiry %s IST; slope accel %s -> %s size" % (
+                          reason, side, spot, note, o["mark"], p["exp_ist"], ("%.3f" % ind["sl_acc"]) if ind.get("sl_acc") is not None else "n/a", "HALF" if half else "full"))
             save(S)
         if time.time() - self.last_beat > 600:
             self.last_beat = time.time()
