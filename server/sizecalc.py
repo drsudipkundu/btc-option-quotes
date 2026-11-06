@@ -85,10 +85,10 @@ def ladder_need(px, entry, held, S):
     return cost
 
 
-def compute40(equity, price, held, tied, entry, S):
+def compute40(equity, price, held, tied, entry, S, ladder_on=True):
     """Sudip's final rule (6-Nov): free = equity - money tied in ladder lots; reserve = ladder buys on a 40 % fall;
     v4 base = min(ceiling, (free - reserve) / v4 loss on that 40 % night per 0.01 BTC base)."""
-    need = ladder_need(price, entry or price, held, S)
+    need = ladder_need(price, entry or price, held, S) if ladder_on else 0.0
     loss001 = S["v4_max_mult"] * 0.01 * price * max(S["fall"] - S["strike_away"], 0)
     free = equity - tied
     raw = (free - need) / loss001 * 0.01
@@ -168,7 +168,7 @@ def main():
     held, tied, entry = ladder_state(armed)
     if armed and held and not tied:
         tied = held * price  # lot prices not readable: count held lots at market (1x)
-    Q = compute40(equity, price, held, tied, entry, S)
+    Q = compute40(equity, price, held, tied, entry, S, ladder_on=bool(armed))
     txt = ("FINAL RULE (Sudip 6-Nov, 40 %% fall reserve, ceiling %.2f): WOULD CHOOSE %.2f BTC\n"
            "  free %.0f USD (equity - %.0f tied in %.3f BTC of ladder lots) | ladder reserve for a %d %% fall %.0f USD | "
            "v4 loss on that night %.0f USD per 0.01 base (3x, guard fails) | money left after such a night %.0f USD (%s)\n"
