@@ -10,7 +10,7 @@ for f in shared_patch.py llive.py llive_ui_patch.py; do curl -fsSL $B/$f -o /tmp
 cp /tmp/llive.py ~/deltabot/llive.py
 python3 /tmp/shared_patch.py ~/deltabot
 python3 /tmp/llive_ui_patch.py ~/deltabot
-./venv/bin/python -m py_compile ladderlive.py nightbot.py llive.py ui.py
+./venv/bin/python -m py_compile ladderlive.py nightbot.py guard.py llive.py ui.py
 ./venv/bin/python -c "import sys; sys.path.insert(0,'.'); import llive; print('llive page bytes:', len(llive.page_html()))"
 sudo systemctl restart ui
 sleep 5

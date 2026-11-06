@@ -3,7 +3,7 @@ ladderlive.py: new cfg flag "shared" (auto-set when --acct serverbot). Shared =>
 (2) option positions are NOT checked (they belong to the night seller), BTCUSD futures still must equal the ladder,
 (3) ladder writes state/ladder_expected_<acct>.json each minute so the guard/night watcher expects those futures,
 (4) --arm refuses a second armed ladder on the same account, (5) --check accepts --acct NAME.
-nightbot.py: live_expected() adds the ladder's BTCUSD contracts. All-or-nothing, idempotent, backups *.bak_shared.
+guard.py: open-position limit counts options only (not BTCUSD futures). nightbot.py: live_expected() adds the ladder's BTCUSD contracts. All-or-nothing, idempotent, backups *.bak_shared.
 Usage: python3 shared_patch.py ~/deltabot   (no restart done here)"""
 import os, sys
 H = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/deltabot")
@@ -62,6 +62,16 @@ else:
         '    except Exception:\n        pass\n'
         '    return {k: v for k, v in exp.items() if v}\n')
     NEW["nightbot.py"] = n
+
+g = rd("guard.py") if os.path.exists(os.path.join(H, "guard.py")) else None
+if g is None:
+    print("guard.py not found, skipped")
+elif 'prefixes=("C-BTC", "P-BTC")' in g:
+    print("guard.py: already patched")
+else:  # the ladder's BTCUSD futures have their own brake/limits in ladderlive; the guard's open limit is for option legs
+    g = rep("guard.py", g, 'def open_btc(positions, prefixes=("BTC", "C-BTC", "P-BTC")):',
+            'def open_btc(positions, prefixes=("C-BTC", "P-BTC")):  # shared_patch: options only, BTCUSD futures belong to the ladder')
+    NEW["guard.py"] = g
 
 for name, txt in NEW.items():
     p = os.path.join(H, name)
