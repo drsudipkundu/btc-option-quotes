@@ -26,6 +26,10 @@ SETTINGS = dict(
     loss_budget_inr=150000.0,  # worst-night loss budget (Sudip, 5-Nov: Rs 1.5 L at 0.04 base)
     hard_cap_btc=0.05,         # guard max_order_btc
     step_up_btc=0.01, step_days=7,
+    fall=0.40,                 # Sudip 6-Nov: reserve for a 40 % BTC fall within 24 h
+    ceiling_btc=0.06,          # Sudip 6-Nov: v4 ceiling 0.06 at Rs 20 L (final at this stage)
+    ladder_gap=0.005, ladder_lot=0.004, ladder_cap_btc=0.28,  # safest case: smallest v13 gap, big lot
+    v4_max_mult=3.0, strike_away=0.04,  # v4 can sell 3 x base; strike ~4 % away; crash guard assumed to FAIL
 )
 
 
@@ -61,6 +65,52 @@ def compute(equity, price, ladder_brake_btc, live_base, prev_up_ts, prev_step_si
         "Rs %.1f L loss budget" % (S["loss_budget_inr"] / 1e5) if by_loss <= S["hard_cap_btc"] else "hard cap")
     return dict(equity=equity, price=price, claim=claim, buffer=buf, spare=spare, by_spare=by_spare, by_loss=by_loss,
                 size=size, step=step, up_ts=up_ts, binding=binding)
+
+
+HI = (1.0, 0.7354, 0.6032, 0.4709, 0.3386); MULT = (1, 1, 2 / 0.75, 4 / 0.75, 7 / 0.75)
+
+
+def ladder_need(px, entry, held, S):
+    """USD the ladder would spend buying lots if BTC fell S['fall'] from px in 24 h (zone gaps, stops at the cap)."""
+    p, cost, h, floor = px, 0.0, held, px * (1 - S["fall"])
+    while h + S["ladder_lot"] <= S["ladder_cap_btc"] + 1e-9:
+        r = p / entry; z = 0
+        for i in range(1, 5):
+            if r < HI[i]:
+                z = i
+        p -= entry * S["ladder_gap"] * MULT[z]
+        if p < floor:
+            break
+        cost += p * S["ladder_lot"]; h += S["ladder_lot"]
+    return cost
+
+
+def compute40(equity, price, held, tied, entry, S):
+    """Sudip's final rule (6-Nov): free = equity - money tied in ladder lots; reserve = ladder buys on a 40 % fall;
+    v4 base = min(ceiling, (free - reserve) / v4 loss on that 40 % night per 0.01 BTC base)."""
+    need = ladder_need(price, entry or price, held, S)
+    loss001 = S["v4_max_mult"] * 0.01 * price * max(S["fall"] - S["strike_away"], 0)
+    free = equity - tied
+    raw = (free - need) / loss001 * 0.01
+    size = int(max(0.0, min(raw, S["ceiling_btc"])) / 0.01 + 1e-9) / 100.0
+    left = free - need - size / 0.01 * loss001
+    return dict(need=need, loss001=loss001, free=free, raw=raw, size=size, left=left)
+
+
+def ladder_state(keys):
+    """held BTC, money tied (USD, at buy prices if known) and cycle entry of the armed ladder in serverbot."""
+    held = tied = 0.0; entry = None
+    for k in keys:
+        try:
+            d = json.load(open(os.path.join(HOME, "state", "live_%s_state.json" % k)))["ladder"]
+        except Exception:
+            continue
+        entry = d.get("entry") or entry
+        for lot in d.get("lots", []):
+            q = (lot.get("c") or lot.get("q") or 0) * 0.001 if isinstance(lot, dict) else 0
+            p = (lot.get("price") or lot.get("p") or 0) if isinstance(lot, dict) else 0
+            held += q; tied += q * p
+    return held, tied, entry
 
 
 def gather():
@@ -115,6 +165,20 @@ def main():
     now = time.time()
     R = compute(equity, price, brake, base, st.get("up_ts"), st.get("step"), now, S)
     txt = report(R, S, armed, base, brake_v13)
+    held, tied, entry = ladder_state(armed)
+    if armed and held and not tied:
+        tied = held * price  # lot prices not readable: count held lots at market (1x)
+    Q = compute40(equity, price, held, tied, entry, S)
+    txt = ("FINAL RULE (Sudip 6-Nov, 40 %% fall reserve, ceiling %.2f): WOULD CHOOSE %.2f BTC\n"
+           "  free %.0f USD (equity - %.0f tied in %.3f BTC of ladder lots) | ladder reserve for a %d %% fall %.0f USD | "
+           "v4 loss on that night %.0f USD per 0.01 base (3x, guard fails) | money left after such a night %.0f USD (%s)\n"
+           % (S["ceiling_btc"], Q["size"], Q["free"], tied, held, int(S["fall"] * 100), Q["need"], Q["loss001"], Q["left"],
+              "Rs %.2f L" % (Q["left"] * S["usd_inr"] / 1e5)))
+    if not armed:
+        Q2 = compute40(equity, price, 0.0, 0.0, price, S)
+        txt += "  If v13 started today (empty ladder): would choose %.2f BTC, ladder reserve %.0f USD, left %.0f USD\n" % (Q2["size"], Q2["need"], Q2["left"])
+    txt += "\nOld plan formula (static claim, for comparison):\n" + report(R, S, armed, base, brake_v13)
+    R["size"] = Q["size"]
     print(txt)
     if show:
         return
@@ -123,13 +187,13 @@ def main():
     with open(CSV_F, "a", newline="") as f:
         w = csv.writer(f)
         if new:
-            w.writerow(["time_ist", "equity_usd", "btc", "ladder_armed", "claim_usd", "spare_usd", "by_spare", "by_loss", "would_choose", "step_limited", "live_base"])
+            w.writerow(["time_ist", "equity_usd", "btc", "ladder_armed", "claim_usd", "spare_usd", "by_spare", "by_loss", "would_choose_40pct_rule", "step_limited_old", "live_base"])
         w.writerow([dt.datetime.now(IST).strftime("%Y-%m-%d %H:%M"), "%.2f" % equity, "%.0f" % price, ",".join(armed), "%.0f" % R["claim"],
                     "%.0f" % R["spare"], "%.3f" % R["by_spare"], "%.3f" % R["by_loss"], R["size"], R["step"], base])
     try:
         import bot as B
         B.MODE = "LIVE"
-        B.Notifier().send("NIGHT SIZE (paper): would choose %.2f BTC, live %.2f" % (R["size"], base), txt)
+        B.Notifier().send("NIGHT SIZE (paper, 40%% rule): would choose %.2f BTC, live %.2f" % (R["size"], base), txt)
     except Exception as e:
         print("email failed:", e)
 
