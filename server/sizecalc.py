@@ -179,6 +179,11 @@ def main():
         txt += "  If v13 started today (empty ladder): would choose %.2f BTC, ladder reserve %.0f USD, left %.0f USD\n" % (Q2["size"], Q2["need"], Q2["left"])
     txt += "\nOld plan formula (static claim, for comparison):\n" + report(R, S, armed, base, brake_v13)
     R["size"] = Q["size"]
+    try:
+        import marginwatch
+        txt += "\n\n" + marginwatch.summary()
+    except Exception as e:
+        txt += "\n\n(margin watch failed: %s)" % e
     print(txt)
     if show:
         return
