@@ -30,6 +30,13 @@ SETTINGS = dict(
     ceiling_btc=0.06,          # Sudip 6-Nov: v4 ceiling 0.06 at Rs 20 L (final at this stage)
     ladder_gap=0.005, ladder_lot=0.004, ladder_cap_btc=0.28,  # safest case: smallest v13 gap, big lot
     v4_max_mult=3.0, strike_away=0.04,  # v4 can sell 3 x base; strike ~4 % away; crash guard assumed to FAIL
+    # 7-Nov-2026 SAFE-BALANCE rule (Sudip agreed Rs 25,000 per 0.01 BTC base at BTC ~75.5k): money to keep free so the
+    # night sale is never liquidated, crash guard WORKING (insurance caps the loss), recomputed nightly from price/ATR/HV14
+    cg_mult=2.0, ins_beyond=0.04,       # crash guard: trigger 2 x ATR14 from entry, insurance 4 % beyond the trigger
+    ins_cost_frac=0.005,                # insurance premium allowance, of notional sold
+    margin_stress_frac=0.05,            # margin Delta may block in a crash, of notional (known rule 0.25-0.5 %; 10x room)
+    time_value_frac=0.005,              # option time value at the guard trigger, of notional
+    moved_hv=0.28347, k_sig=0.088192, normal_dist=0.025,  # v4 strike distance: moved night 1.4 x daily sigma, else 2.5 %
 )
 
 
@@ -95,6 +102,29 @@ def compute40(equity, price, held, tied, entry, S, ladder_on=True):
     size = int(max(0.0, min(raw, S["ceiling_btc"])) / 0.01 + 1e-9) / 100.0
     left = free - need - size / 0.01 * loss001
     return dict(need=need, loss001=loss001, free=free, raw=raw, size=size, left=left)
+
+
+def safe_balance(price, ind, S):
+    """USD to keep free per 0.01 BTC base (v4 at its max 3 x) so tonight's sale survives any crash with the guard working.
+    cap = loss between the sold strike and the insurance strike (fixed once the guard fires) + insurance cost + stress margin."""
+    hv14, atr = ind["hv14"], ind["atr"]
+    moved = hv14 > S["moved_hv"]
+    dist = hv14 * S["k_sig"] if moved else S["normal_dist"]
+    trig = S["cg_mult"] * atr / price
+    n = S["v4_max_mult"] * 0.01 * price                       # notional sold per 0.01 base at 3 x
+    before = n * (max(0.0, trig - dist) + S["time_value_frac"])
+    cap = n * max(0.0, (1 - dist) - (1 - S["ins_beyond"]) * (1 - trig))
+    ins, mar = n * S["ins_cost_frac"], n * S["margin_stress_frac"]
+    return dict(moved=moved, dist=dist, trig=trig, notional=n, before=before, cap=cap, ins=ins, margin=mar,
+                safe=cap + ins + mar, hv14=hv14, atr=atr)
+
+
+def tonight_ind():
+    import delta_api as d
+    from nightlogic import indicators
+    now = time.time()
+    r = d.public("/v2/history/candles", {"resolution": "1d", "symbol": "BTCUSD", "start": int(now - 400 * 86400), "end": int(now)})["result"]
+    return indicators(sorted(r, key=lambda x: x["time"]), now)
 
 
 def ladder_state(keys):
@@ -177,6 +207,21 @@ def main():
     if not armed:
         Q2 = compute40(equity, price, 0.0, 0.0, price, S)
         txt += "  If v13 started today (empty ladder): would choose %.2f BTC, ladder reserve %.0f USD, left %.0f USD\n" % (Q2["size"], Q2["need"], Q2["left"])
+    try:
+        ind = tonight_ind()
+        B = safe_balance(price, ind, S)
+        rs = lambda u: "Rs %s" % format(int(round(u * S["usd_inr"], -2)), ",")
+        sb = int(max(0.0, min((Q["free"] - Q["need"]) / B["safe"] * 0.01, S["ceiling_btc"])) / 0.01 + 1e-9) / 100.0
+        txt += ("SAFE-BALANCE RULE (7-Nov, crash guard working): keep %.0f USD (%s) free per 0.01 BTC base\n"
+                "  tonight %s night: strike %.1f %% away, guard trigger %.1f %% (2 x ATR %.0f), 3 x = %.0f USD notional per 0.01 base\n"
+                "  open loss before the hedge %.0f USD (%s) | capped loss with insurance %.0f USD (%s) | insurance %.0f | margin room %.0f USD\n"
+                "  live base %.2f needs %.0f USD (%s); money free after the ladder reserve allows %.2f BTC base (ceiling %.2f)\n"
+                % (B["safe"], rs(B["safe"]), "MOVED" if B["moved"] else "normal", B["dist"] * 100, B["trig"] * 100, B["atr"], B["notional"],
+                   B["before"], rs(B["before"]), B["cap"], rs(B["cap"]), B["ins"], B["margin"],
+                   base, B["safe"] * base / 0.01, rs(B["safe"] * base / 0.01), sb, S["ceiling_btc"]))
+        R["safe001"], R["safe_size"] = B["safe"], sb
+    except Exception as e:
+        txt += "(safe-balance rule failed: %s)\n" % e
     txt += "\nOld plan formula (static claim, for comparison):\n" + report(R, S, armed, base, brake_v13)
     R["size"] = Q["size"]
     try:
@@ -195,6 +240,15 @@ def main():
             w.writerow(["time_ist", "equity_usd", "btc", "ladder_armed", "claim_usd", "spare_usd", "by_spare", "by_loss", "would_choose_40pct_rule", "step_limited_old", "live_base"])
         w.writerow([dt.datetime.now(IST).strftime("%Y-%m-%d %H:%M"), "%.2f" % equity, "%.0f" % price, ",".join(armed), "%.0f" % R["claim"],
                     "%.0f" % R["spare"], "%.3f" % R["by_spare"], "%.3f" % R["by_loss"], R["size"], R["step"], base])
+    if R.get("safe001"):
+        sf = os.path.join(HOME, "logs", "safebalance.csv")
+        new = not os.path.exists(sf)
+        with open(sf, "a", newline="") as f:
+            w = csv.writer(f)
+            if new:
+                w.writerow(["time_ist", "btc", "safe_usd_per_001_base", "safe_inr_per_001_base", "live_base", "safe_rule_size"])
+            w.writerow([dt.datetime.now(IST).strftime("%Y-%m-%d %H:%M"), "%.0f" % price, "%.0f" % R["safe001"],
+                        "%.0f" % (R["safe001"] * S["usd_inr"]), base, R["safe_size"]])
     try:
         import bot as B
         B.MODE = "LIVE"
