@@ -2,7 +2,7 @@
 """tgsetup - one-time Telegram setup for the night watchman (10-Nov-2026). Run by Sudip in the server terminal.
 Asks for the bot token with a hidden prompt, checks it with Telegram, finds his chat, saves state/telegram.env (mode 600)
 and sends a test message. The token is never printed. Prints plain reasons if something is wrong."""
-import os, sys, json, getpass, urllib.request, urllib.parse, urllib.error
+import os, re, sys, json, getpass, urllib.request, urllib.parse, urllib.error
 
 ENV = os.path.expanduser("~/deltabot/state/telegram.env")
 
@@ -21,7 +21,9 @@ def call(tok, method, data=None):
         return {"ok": False, "description": type(e).__name__}
 
 
-tok = getpass.getpass("Paste the bot token (hidden), then press Enter: ").strip().strip("[]\"' ")
+raw = getpass.getpass("Paste the bot token (hidden), then press Enter: ")
+m = re.search(r"\d{6,}:[A-Za-z0-9_-]{25,}", raw)  # works even if extra words or spaces were pasted with it
+tok = m.group(0) if m else ""
 if not tok or ":" not in tok:
     sys.exit("That does not look like a token. It should be digits, a colon, then letters, e.g. 123456789:AAH...  Run again.")
 me = call(tok, "getMe")
