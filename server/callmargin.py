@@ -17,8 +17,9 @@ from liveorders import Live, Pub  # same read-only client the capital manager us
 
 ACCT = os.environ.get("CM_ACCT", "ladder9")
 CPB = 1000.0  # contracts per BTC (1 contract = 0.001 BTC), same for BTCUSD and BTC options
-CSV = os.path.join(H, "logs", "callmargin.csv")
-RAW = os.path.join(H, "logs", "callmargin_raw.jsonl")
+SUF = "" if ACCT == "ladder9" else "_" + ACCT          # other accounts (e.g. serverbot = night account) log to their own files
+CSV = os.path.join(H, "logs", "callmargin%s.csv" % SUF)
+RAW = os.path.join(H, "logs", "callmargin%s_raw.jsonl" % SUF)
 COLS = ["time_ist", "index", "wallet_balance", "blocked_margin", "available", "symbol", "size_contracts", "btc",
         "entry_price", "mark_price", "margin", "notional_at_index", "margin_over_notional", "upnl"]
 

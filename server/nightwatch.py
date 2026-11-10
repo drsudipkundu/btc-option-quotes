@@ -169,7 +169,21 @@ def main():
     if "--test" in sys.argv:
         print("sent" if tg_send("Night watchman test message. Level checks are READ-ONLY, no orders are placed.") else "not sent")
         return
-    pos, b0, spot = read_account()
+    try:
+        pos, b0, spot = read_account()
+    except Exception as e:                       # Delta unreachable / rejecting calls: alert after 3 failed minutes in a row
+        st["fails"] = st.get("fails", 0) + 1
+        print("read failed (%d): %s" % (st["fails"], type(e).__name__))
+        if st["fails"] >= 3 and now - st.get("fail_sent", 0) >= 600 and "--show" not in sys.argv:
+            if tg_send("RED ALERT - watchman cannot read the night account from Delta for %d minutes (%s). "
+                       "Check Delta (halt? login? API key?) and the open positions by hand." % (st["fails"], type(e).__name__)):
+                st["fail_sent"] = now
+        if "--show" not in sys.argv:
+            json.dump(st, open(STF, "w"))
+        return
+    if st.get("fails", 0) >= 3 and "--show" not in sys.argv:
+        tg_send("Delta reading is back after %d failed minutes." % st["fails"])
+    st["fails"] = 0
     row, level, why = analyse(pos, b0, spot, st, now)
     line = "%s | BTC %.0f | equity %.0f USD | free %s %% | open loss %.0f USD | short %.3f long %.3f BTC | liq %s %% | %s" % (
         row["time_ist"][11:16], spot, row["equity"], row["free_pct"], row["open_loss"], row["short_btc"], row["long_btc"],
