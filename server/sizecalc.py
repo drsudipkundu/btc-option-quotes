@@ -30,12 +30,13 @@ SETTINGS = dict(
     ceiling_btc=0.06,          # Sudip 6-Nov: v4 ceiling 0.06 at Rs 20 L (final at this stage)
     ladder_gap=0.005, ladder_lot=0.004, ladder_cap_btc=0.28,  # safest case: smallest v13 gap, big lot
     v4_max_mult=3.0, strike_away=0.04,  # v4 can sell 3 x base; strike ~4 % away; crash guard assumed to FAIL
-    # 7-Nov-2026 SAFE-BALANCE rule (Sudip agreed Rs 25,000 per 0.01 BTC base at BTC ~75.5k): money to keep free so the
+    # 7-Nov-2026 SAFE-BALANCE rule (Sudip agreed Rs 25,000 per 0.01 BTC base at BTC ~75.5k; raised to a Rs 45,000 floor on 10-Nov): money to keep free so the
     # night sale is never liquidated, crash guard WORKING (insurance caps the loss), recomputed nightly from price/ATR/HV14
     cg_mult=2.0, ins_beyond=0.04,       # crash guard: trigger 2 x ATR14 from entry, insurance 4 % beyond the trigger
     ins_cost_frac=0.005,                # insurance premium allowance, of notional sold
     margin_stress_frac=0.05,            # margin Delta may block in a crash, of notional (known rule 0.25-0.5 %; 10x room)
     time_value_frac=0.005,              # option time value at the guard trigger, of notional
+    safe_floor_inr=45000.0,             # 10-Nov-2026 Sudip: keep at least Rs 45,000 free per 0.01 BTC base (covers a ~20 % fast gap)
     moved_hv=0.28347, k_sig=0.088192, normal_dist=0.025,  # v4 strike distance: moved night 1.4 x daily sigma, else 2.5 %
 )
 
@@ -115,8 +116,9 @@ def safe_balance(price, ind, S):
     before = n * (max(0.0, trig - dist) + S["time_value_frac"])
     cap = n * max(0.0, (1 - dist) - (1 - S["ins_beyond"]) * (1 - trig))
     ins, mar = n * S["ins_cost_frac"], n * S["margin_stress_frac"]
+    safe = max(cap + ins + mar, S.get("safe_floor_inr", 0.0) / S["usd_inr"])  # never below the Rs floor
     return dict(moved=moved, dist=dist, trig=trig, notional=n, before=before, cap=cap, ins=ins, margin=mar,
-                safe=cap + ins + mar, hv14=hv14, atr=atr)
+                safe=safe, hv14=hv14, atr=atr)
 
 
 def tonight_ind():
