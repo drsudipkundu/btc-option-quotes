@@ -35,6 +35,7 @@ MOVE_PCT, MOVE_MIN = 0.03, 15
 REPEAT_S, ACK_S = 120, 1800
 ENV = os.path.join(H, "state", "telegram.env")
 STF = os.path.join(H, "state", "nightwatch_state.json")
+HC_F = os.path.join(H, "state", "hc_url")        # optional: Healthchecks.io ping URL (dead-man switch outside the server)
 CSV = os.path.join(H, "logs", "nightwatch.csv")
 COLS = ["time_ist", "spot", "equity", "available", "free_pct", "open_loss", "open_loss_pct", "short_btc", "long_btc",
         "uncovered_btc", "liq_dist_pct", "move15_pct", "level"]
@@ -91,6 +92,16 @@ def tg_ack(st):
         if str((m.get("chat") or {}).get("id")) == str(chat) and str(m.get("text", "")).strip().lower() == "ack":
             got = True
     return got
+
+
+def hc_ping(suffix=""):
+    """Tell the outside dead-man switch (Healthchecks.io) that the watchman is alive. Silent if not configured."""
+    try:
+        u = open(HC_F).read().strip()
+        if u.startswith("https://hc-ping.com/") or u.startswith("https://healthchecks.io/"):
+            urllib.request.urlopen(u.rstrip("/") + suffix, timeout=10).read()
+    except Exception:
+        pass
 
 
 def read_account():
@@ -173,6 +184,7 @@ def main():
         pos, b0, spot = read_account()
     except Exception as e:                       # Delta unreachable / rejecting calls: alert after 3 failed minutes in a row
         st["fails"] = st.get("fails", 0) + 1
+        hc_ping("/fail")
         print("read failed (%d): %s" % (st["fails"], type(e).__name__))
         if st["fails"] >= 3 and now - st.get("fail_sent", 0) >= 600 and "--show" not in sys.argv:
             if tg_send("RED ALERT - watchman cannot read the night account from Delta for %d minutes (%s). "
@@ -184,6 +196,7 @@ def main():
     if st.get("fails", 0) >= 3 and "--show" not in sys.argv:
         tg_send("Delta reading is back after %d failed minutes." % st["fails"])
     st["fails"] = 0
+    hc_ping()
     row, level, why = analyse(pos, b0, spot, st, now)
     line = "%s | BTC %.0f | equity %.0f USD | free %s %% | open loss %.0f USD | short %.3f long %.3f BTC | liq %s %% | %s" % (
         row["time_ist"][11:16], spot, row["equity"], row["free_pct"], row["open_loss"], row["short_btc"], row["long_btc"],
