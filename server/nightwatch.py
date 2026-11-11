@@ -18,7 +18,12 @@ Levels (Sudip accepted 10-Nov, scale with account equity; only while an option p
            or BTC moved >= 3 % in 15 min against a short                                    -> alert every 2 min until "ack"
   CRITICAL open loss >= 15 % of equity or free balance <= 25 % or liquidation within 1.5 % of price,
            and a short is NOT covered by a long option of the same type                     -> alert every 2 min until "ack"
-Reply "ack" to the bot to silence repeats for 30 minutes. Server time is IST."""
+Reply "ack" to the bot to silence repeats for 30 minutes. Server time is IST.
+
+Gap notes (11-Nov-2026, information only, one message each per position): when BTC has covered 50 / 75 / 100 % of the
+distance between the price at the sale and the sold strike. Figures from the 524-night Delta backtest
+(claude/night-sell-real-iv-open-loss-and-warning-signs-2026-11-11.md). The price at the sale is the price the watchman saw
+in the first minute the short appeared."""
 import os, sys, csv, json, time, urllib.request, urllib.parse, datetime as dt
 
 H = os.path.expanduser("~/deltabot")
@@ -162,6 +167,42 @@ def hc_ping(suffix=""):
         pass
 
 
+GAP_TXT = {50: "In the past 29 % of such nights touched the strike and 2 % ended in a loss.",
+           "75f": "This happened within 3 hours of the sale: in the past 2 in 3 such nights touched the strike and 1 in 9 ended in a loss.",
+           "75s": "In the past about half of such nights touched the strike and 1 in 50 ended in a loss.",
+           100: "BTC is at the sold strike. In the past 3 of 37 such nights (8 %) ended in a loss; the rest came back."}
+
+
+def gap_notes(pos, spot, st, now):
+    """information messages when BTC has covered 50/75/100 % of the gap to a sold strike; state kept in st['gap']"""
+    g, out, seen = st.setdefault("gap", {}), [], set()
+    for p in pos:
+        sym, sz = str(p.get("product_symbol", "")), f(p.get("size"))
+        if sz >= 0 or sym[:2] not in ("C-", "P-") or spot <= 0:
+            continue
+        try:
+            k = float(sym.split("-")[2])
+        except (IndexError, ValueError):
+            continue
+        seen.add(sym)
+        e = g.setdefault(sym, {"s0": spot, "t0": now, "told": []})
+        gap = (e["s0"] - k) if sym[0] == "P" else (k - e["s0"])
+        if gap <= 0:
+            continue
+        cov = ((e["s0"] - spot) if sym[0] == "P" else (spot - e["s0"])) / gap * 100
+        e["cov"] = round(cov, 1)
+        for lv in (100, 75, 50):
+            if cov >= lv and lv not in e["told"]:
+                e["told"] = sorted(set(e["told"]) | {x for x in (50, 75, 100) if x <= lv})
+                key = lv if lv != 75 else ("75f" if now - e["t0"] <= 3 * 3600 else "75s")
+                out.append("NOTE - %s: BTC %.0f has covered %d %% of the gap from %.0f (price at the sale) to the strike %.0f. %s"
+                           % (sym, spot, min(int(cov), 100) if lv < 100 else 100, e["s0"], k, GAP_TXT[key]))
+                break
+    for sym in [x for x in g if x not in seen]:
+        del g[sym]
+    return out
+
+
 def read_account():
     from liveorders import Live, Pub
     lv, pub = Live(ACCT), Pub()
@@ -280,6 +321,8 @@ def main():
                 w.writeheader()
             w.writerow(row)
     handle(tg_commands(st), st, now, line, why, pos)
+    for note in gap_notes(pos, spot, st, now):
+        tg_send(note + "\nInformation only - no order is placed.\n" + line)
     prev = st.get("level", "OK")
     send = False
     if RANK[level] > RANK[prev]:
