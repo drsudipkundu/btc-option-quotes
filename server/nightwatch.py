@@ -8,6 +8,7 @@ account's own numbers read straight from Delta.
 
 Run by cron every minute:   venv/bin/python nightwatch.py
   --show     print the reading and the level, send nothing, write nothing
+  --daily    send the last night result to Telegram (cron 17:36 IST)
   --alive    send one Telegram status line (cron 17:40 and 23:40 IST) so silence means the watchman is down
   --test     send a Telegram test message
 
@@ -75,23 +76,80 @@ def tg_send(text):
         return False
 
 
-def tg_ack(st):
-    """True if Sudip replied 'ack' since the last check."""
+def tg_commands(st):
+    """Texts Sudip sent to the bot since the last check (only from his own chat). Returns a list of lower-case strings."""
     tok, chat = tg_cfg()
     if not tok:
-        return False
+        return []
     try:
         u = "https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=0" % (tok, int(st.get("tg_offset", 0)))
         res = json.load(urllib.request.urlopen(u, timeout=15)).get("result", [])
     except Exception:
-        return False
-    got = False
+        return []
+    out = []
     for r in res:
         st["tg_offset"] = r["update_id"] + 1
         m = r.get("message") or {}
-        if str((m.get("chat") or {}).get("id")) == str(chat) and str(m.get("text", "")).strip().lower() == "ack":
-            got = True
-    return got
+        if str((m.get("chat") or {}).get("id")) == str(chat) and m.get("text"):
+            out.append(str(m["text"]).strip().lower().split("@")[0])
+    return out
+
+
+def night_state():
+    try:
+        return json.load(open(os.path.join(H, "state", "night_nlive.json")))
+    except Exception:
+        return {}
+
+
+def result_text():
+    ns = night_state()
+    ln = ns.get("last_night") or {}
+    return "Night sell result: last night %s P&L %.2f USD | running total %.2f USD over %s nights (fees included)." % (
+        ln.get("night", "?"), f(ln.get("pnl")), f(ns.get("total_pnl")), ns.get("nights", "?"))
+
+
+def ctl_state():
+    try:
+        import control
+        return control.get("nlive")["state"]
+    except Exception:
+        return "unknown"
+
+
+HELP = ("Commands: /status = night account now | /result = last night and total | /pause = no new night sales | "
+        "/resume = allow sales again | ack = pause repeated alerts 30 min | /help")
+
+
+def handle(cmds, st, now, line, why, pos):
+    for c in cmds:
+        if c in ("ack", "/ack"):
+            st["ack_until"] = now + ACK_S
+            tg_send("OK, repeats paused for 30 minutes.")
+        elif c == "/status":
+            ps = ["%s %s lots @ %s mark %s" % (p.get("product_symbol"), p.get("size"), p.get("entry_price"), p.get("mark_price"))
+                  for p in pos if f(p.get("size"))]
+            tg_send("STATUS\n%s\n%s\nSales are: %s (base %s)\n%s" % (line, "; ".join(why) or "no warnings",
+                    ctl_state(), (json.load(open(os.path.join(H, "state", "night_live_cfg.json"))).get("base") if os.path.exists(os.path.join(H, "state", "night_live_cfg.json")) else "?"),
+                    "Positions: " + (" | ".join(ps) if ps else "none")))
+        elif c == "/result":
+            tg_send(result_text())
+        elif c == "/pause":
+            try:
+                import control
+                control.set_state("nlive", "paused")
+                tg_send("PAUSED: no new night sales. An open position keeps its resting buy-back. Send /resume to allow sales again.")
+            except Exception as e:
+                tg_send("Could not pause (%s). Use the Pause button on the control page." % type(e).__name__)
+        elif c == "/resume":
+            try:
+                import control
+                control.set_state("nlive", "running")
+                tg_send("RESUMED: night sales allowed again.")
+            except Exception as e:
+                tg_send("Could not resume (%s)." % type(e).__name__)
+        elif c in ("/help", "/start"):
+            tg_send(HELP)
 
 
 def hc_ping(suffix=""):
@@ -206,6 +264,9 @@ def main():
         if why:
             print("; ".join(why))
         return
+    if "--daily" in sys.argv:
+        tg_send(result_text() + " Night account now: " + line)
+        return
     if "--alive" in sys.argv:
         tg_send("Night watchman alive. " + line)
         return
@@ -218,8 +279,7 @@ def main():
             if new:
                 w.writeheader()
             w.writerow(row)
-    if tg_ack(st):
-        st["ack_until"] = now + ACK_S
+    handle(tg_commands(st), st, now, line, why, pos)
     prev = st.get("level", "OK")
     send = False
     if RANK[level] > RANK[prev]:
