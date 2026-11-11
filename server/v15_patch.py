@@ -43,9 +43,11 @@ try:
     s = rd("stratinfo.py")
     if '"lv15"' in s: print("stratinfo.py: lv15 already there")
     else:
-        a = '    "lv13": dict('
-        assert s.count(a) == 1, "stratinfo anchor"
-        s = s.replace(a, '    "lv15": dict(LAD_COMMON, title="Ladder v15 (v13 + extra call split)", kind="ladder",\n'
+        a = '    "lv12": dict(LAD_COMMON,'
+        if s.count(a) != 1:
+            print("stratinfo.py: anchor not found, skipped (bot still fine)")
+        else:
+          s = s.replace(a, '    "lv15": dict(LAD_COMMON, title="Ladder v15 (v13 + extra call split)", kind="ladder",\n'
                          '                 strike="Ladder as v13 (4-hour ER gap 0.5 / 0.75 / 1.0 %). Covered call: delta 0.03, at least 5 % out. Extra call 5x covered (cap 0.3 BTC) if yesterday closed <= SMA100: first 2x at the same strike, the rest at the lowest strike above BTC x 1.06 (skipped if none)",\n'
                          '                 size="As v9: 0.004 / 0.002 BTC by SMA100, brake 0.28 BTC",\n'
                          '                 rules="Stops strike x 1.05 per position, buy-back 17:20 on expiry day; every sale by Smart Sell"),\n' + a, 1)
