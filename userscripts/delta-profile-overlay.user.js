@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Delta BTCUSD – Volume profile + Option OI overlay (Sudip)
 // @namespace    sudip.btc.ladder
-// @version      2.4
+// @version      2.5
 // @description  Draws a volume profile (left), estimated liquidation clusters (left-centre), live order-book walls with a readout box (centre-right) and BTC option open interest by strike (right) as horizontal bars, plus a small black positioning table (Binance long/short, top traders, taker, open-interest change) at the top, on the Delta Exchange BTCUSD chart. Read-only public market data; never places or touches orders.
 // @match        https://www.delta.exchange/app/futures/trade/BTC/BTCUSD*
 // @match        https://india.delta.exchange/app/futures/trade/BTC/BTCUSD*
@@ -229,6 +229,15 @@ ${row('Taker buy/sell 24h', P.taker.v.toFixed(2), '', P.taker.z)}
 ${row('Open interest 24h', (P.oi.chg >= 0 ? '+' : '') + P.oi.chg.toFixed(1) + '%', (P.oi.val / 1000).toFixed(1) + 'k BTC', P.oi.z)}
 </table>${watch}<div style="padding:2px 8px;color:#546e7a;font-size:10px">info only - weak direction edge in 6-yr test</div>`;
   }
+  function placeTbl(box) {   // sit just below the Transfer Funds button (blank space); fall back to top centre
+    try {
+      const leaf = [...document.querySelectorAll('button,a')].find(e => /^\s*Transfer Funds\s*$/i.test(e.textContent));
+      if (!leaf) return;
+      const r = leaf.getBoundingClientRect();
+      if (r.width < 20) return;
+      box.style.left = Math.max(4, Math.round(r.left - 8)) + 'px'; box.style.top = Math.round(r.bottom + 8) + 'px'; box.style.transform = 'none';
+    } catch (e) {}
+  }
   async function drawTable() {
     if (!CFG.tblOn) return;
     try {
@@ -241,6 +250,7 @@ ${row('Open interest 24h', (P.oi.chg >= 0 ? '+' : '') + P.oi.chg.toFixed(1) + '%
         document.body.appendChild(box);
       }
       box.innerHTML = tblHtml(P);
+      placeTbl(box);
       const x = document.getElementById('sTblX'); if (x) x.onclick = () => { try { localStorage.setItem('sTblHide', '1'); } catch (e) {} box.remove(); };
     } catch (e) { console.warn('positioning table', e); }
   }
@@ -460,6 +470,7 @@ ${row('Open interest 24h', (P.oi.chg >= 0 ? '+' : '') + P.oi.chg.toFixed(1) + '%
   }
 
   let timer = null;
+  window.addEventListener('resize', () => { const b = document.getElementById('sTbl'); if (b) placeTbl(b); });
   async function start() {
     const c = await getChart(); if (!c) return;
     await draw();
