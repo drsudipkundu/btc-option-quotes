@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Delta BTCUSD – Volume profile + Option OI overlay (Sudip)
 // @namespace    sudip.btc.ladder
-// @version      2.5
+// @version      2.6
 // @description  Draws a volume profile (left), estimated liquidation clusters (left-centre), live order-book walls with a readout box (centre-right) and BTC option open interest by strike (right) as horizontal bars, plus a small black positioning table (Binance long/short, top traders, taker, open-interest change) at the top, on the Delta Exchange BTCUSD chart. Read-only public market data; never places or touches orders.
 // @match        https://www.delta.exchange/app/futures/trade/BTC/BTCUSD*
 // @match        https://india.delta.exchange/app/futures/trade/BTC/BTCUSD*
@@ -246,7 +246,7 @@ ${row('Open interest 24h', (P.oi.chg >= 0 ? '+' : '') + P.oi.chg.toFixed(1) + '%
       let box = document.getElementById('sTbl');
       if (!box) {
         box = document.createElement('div'); box.id = 'sTbl';
-        box.style.cssText = `position:fixed;top:${CFG.tblTop}px;left:50%;transform:translateX(-50%);z-index:99999;background:rgba(0,0,0,0.88);border:1px solid #37474f;border-radius:6px;font:11px/1.35 system-ui,sans-serif;color:#cfd8dc;padding:3px 0;pointer-events:auto`;
+        box.style.cssText = `position:fixed;top:${CFG.tblTop}px;left:50%;transform:translateX(-50%);z-index:20;background:rgba(0,0,0,0.88);border:1px solid #37474f;border-radius:6px;font:11px/1.35 system-ui,sans-serif;color:#cfd8dc;padding:3px 0;pointer-events:auto`;
         document.body.appendChild(box);
       }
       box.innerHTML = tblHtml(P);
