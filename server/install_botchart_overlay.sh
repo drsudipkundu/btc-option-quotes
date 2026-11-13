@@ -14,7 +14,7 @@ import re
 p = 'chartpage.py'
 s = open(p, encoding='utf-8').read()
 js = open('/tmp/botchart-overlay.js', encoding='utf-8').read()
-assert 'v1.3' in js[:200], 'overlay download looks wrong - nothing changed'
+assert 'v1.4' in js[:200], 'overlay download looks wrong - nothing changed'
 import base64
 b64 = base64.b64encode(js.encode('utf-8')).decode()   # base64 has no quotes or backslashes, so it is safe inside any Python string
 s = re.sub(r'<script src="https://cdn\.jsdelivr\.net/gh/drsudipkundu/btc-option-quotes@[0-9a-f]+/userscripts/botchart-overlay\.js"></script>', '', s)
@@ -23,7 +23,7 @@ end = '</script></body></html>"""'
 assert end in s, 'page end marker not found - nothing changed'
 s = s.replace(end, '</script><script>/*BCO-START*/(0,eval)(decodeURIComponent(escape(atob("' + b64 + '"))));/*BCO-END*/</script></body></html>"""')
 open(p, 'w', encoding='utf-8').write(s)
-print('overlay v1.3 placed inside the page')
+print('overlay v1.4 placed inside the page')
 PY
 python3 -m py_compile chartpage.py
 sudo systemctl restart ui
