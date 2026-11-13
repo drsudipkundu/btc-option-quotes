@@ -1,4 +1,4 @@
-/* My Bots chart page overlay (v1.3, 1-Nov-2026): same layers as the Delta userscript v1.9, drawn on a canvas over the lightweight-charts chart.
+/* My Bots chart page overlay (v1.4, 1-Nov-2026): same layers as the Delta userscript v1.9, drawn on a canvas over the lightweight-charts chart.
    Volume profile (left), estimated liquidation clusters (left-centre), BTC option OI (right), live order-book walls just right of the
    current candle, liquidity POC line, book readout box, ladder-level wall check (on the bot's own green 'buy' lines).
    Read-only public data. Loaded by chartpage.py via one <script> tag; needs the page globals chart, cs, sym, res, RES, light, wrap. */
@@ -341,4 +341,74 @@
   applyCandleMode(); tick();
   slowRefresh(); setInterval(slowRefresh, CFG.refreshMin * 60000);
   bookRefresh(); setInterval(bookRefresh, CFG.bookSec * 1000);
+})();
+
+/* ---- positioning table + mini chart (added v1.4; info only) ---- */
+(function () {
+  'use strict';
+  const CFG = { tblOn: true, tblTop: 52 };
+  function mean(a) { return a.reduce((x, y) => x + y, 0) / (a.length || 1); }
+  function zscore(arr) {                       // z of the last value vs the whole array
+    const m = mean(arr), sd = Math.sqrt(mean(arr.map(v => (v - m) * (v - m)))) || 1e-9;
+    return (arr[arr.length - 1] - m) / sd;
+  }
+  async function positioning() {
+    const B = 'https://fapi.binance.com/futures/data/';
+    const g = async u => (await fetch(B + u, { referrerPolicy: 'no-referrer' })).json();
+    const n = 500;
+    const [ga, tp, tk, oi] = await Promise.all([
+      g('globalLongShortAccountRatio?symbol=BTCUSDT&period=1h&limit=' + n),
+      g('topLongShortPositionRatio?symbol=BTCUSDT&period=1h&limit=' + n),
+      g('takerlongshortRatio?symbol=BTCUSDT&period=1h&limit=' + n),
+      g('openInterestHist?symbol=BTCUSDT&period=1h&limit=' + (n + 24))]);
+    const out = {};
+    const a = ga.map(r => Math.log(+r.longShortRatio)); out.all = { v: +ga[ga.length - 1].longShortRatio, d24: +ga[ga.length - 25].longShortRatio, z: zscore(a) };
+    const t = tp.map(r => Math.log(+r.longShortRatio)); out.top = { v: +tp[tp.length - 1].longShortRatio, d24: +tp[tp.length - 25].longShortRatio, z: zscore(t) };
+    const tr = tk.map(r => +r.buySellRatio); const tl = tr.slice(-24); out.taker = { v: mean(tl), z: zscore(tr.map((_, i) => mean(tr.slice(Math.max(0, i - 23), i + 1)))) };
+    const o = oi.map(r => +r.sumOpenInterest); const ch = []; for (let i = 24; i < o.length; i++) ch.push(Math.log(o[i] / o[i - 24]));
+    out.oi = { chg: (Math.exp(ch[ch.length - 1]) - 1) * 100, z: zscore(ch), val: o[o.length - 1] };
+    out.t = ga[ga.length - 1].timestamp; out.sa = ga.map(r => +r.longShortRatio); out.st = tp.map(r => +r.longShortRatio);
+    return out;
+  }
+  function tblHtml(P) {
+    const col = z => (Math.abs(z) >= 1.5 ? '#ffb300' : '#cfd8dc');
+    const row = (name, v, d, z) => `<tr><td style="text-align:left;padding:1px 8px">${name}</td><td style="text-align:right;padding:1px 6px;color:#fff">${v}</td><td style="text-align:right;padding:1px 6px;color:#90a4ae">${d}</td><td style="text-align:right;padding:1px 6px;color:${col(z)}">${z >= 0 ? '+' : ''}${z.toFixed(1)}</td></tr>`;
+    const arrow = (a, b) => (a > b ? '▲' : a < b ? '▼' : '■');
+    const watch = P.oi.z >= 1.5 ? '<div style="color:#ffb300;padding:2px 8px">OI jump: bigger move than usual likely in next 24h (range, not direction)</div>' : '';
+    const T = new Date(P.t).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return `<div style="display:flex;justify-content:space-between;padding:2px 8px;color:#90a4ae"><span>Binance BTCUSDT positioning</span><span>${T} <b id="sTblX" style="cursor:pointer;color:#ef5350">×</b></span></div>
+<table style="border-collapse:collapse;font-size:11px"><tr style="color:#78909c"><td></td><td style="text-align:right;padding:0 6px">now</td><td style="text-align:right;padding:0 6px">24h ago</td><td style="text-align:right;padding:0 6px">z (21d)</td></tr>
+${row('All accounts L/S', P.all.v.toFixed(2) + ' ' + arrow(P.all.v, P.all.d24), P.all.d24.toFixed(2), P.all.z)}
+${row('Top traders L/S (pos)', P.top.v.toFixed(2) + ' ' + arrow(P.top.v, P.top.d24), P.top.d24.toFixed(2), P.top.z)}
+${row('Taker buy/sell 24h', P.taker.v.toFixed(2), '', P.taker.z)}
+${row('Open interest 24h', (P.oi.chg >= 0 ? '+' : '') + P.oi.chg.toFixed(1) + '%', (P.oi.val / 1000).toFixed(1) + 'k BTC', P.oi.z)}
+</table>${watch}<div style="padding:2px 8px;color:#546e7a;font-size:10px">info only - weak direction edge in 6-yr test</div><canvas id="sTblC" width="300" height="70" style="display:block;margin:2px 8px 0"></canvas>`;
+  }
+  function miniChart(P) {
+    const cv = document.getElementById('sTblC'); if (!cv || !P.sa) return;
+    const g = cv.getContext('2d'), W = cv.width, H = cv.height; g.clearRect(0, 0, W, H);
+    const all = P.sa.concat(P.st), lo = Math.min(...all), hi = Math.max(...all), pad = (hi - lo) * 0.08 || 0.1;
+    const y = v => H - 12 - (v - lo + pad) / (hi - lo + 2 * pad) * (H - 16);
+    const line = (a, col) => { g.beginPath(); a.forEach((v, k) => { const x = k / (a.length - 1) * (W - 2) + 1; k ? g.lineTo(x, y(v)) : g.moveTo(x, y(v)); }); g.strokeStyle = col; g.lineWidth = 1.4; g.stroke(); };
+    line(P.sa, '#4fc3f7'); line(P.st, '#ffb74d');
+    g.font = '9px system-ui'; g.fillStyle = '#4fc3f7'; g.fillText('all accounts L/S', 2, H - 2);
+    g.fillStyle = '#ffb74d'; g.fillText('top traders L/S', 100, H - 2);
+    g.fillStyle = '#78909c'; g.fillText('21d', W - 22, H - 2);
+  }
+  async function drawTable() {
+    if (!CFG.tblOn) return;
+    try {
+      if (localStorage.getItem('sTblHide') === '1') { const o = document.getElementById('sTbl'); if (o) o.remove(); return; }
+      const P = await positioning();
+      let box = document.getElementById('sTbl');
+      if (!box) {
+        box = document.createElement('div'); box.id = 'sTbl';
+        box.style.cssText = `position:fixed;top:${CFG.tblTop}px;left:50%;transform:translateX(-50%);z-index:99999;background:rgba(0,0,0,0.88);border:1px solid #37474f;border-radius:6px;font:11px/1.35 system-ui,sans-serif;color:#cfd8dc;padding:3px 0;pointer-events:auto`;
+        document.body.appendChild(box);
+      }
+      box.innerHTML = tblHtml(P); miniChart(P);
+      const x = document.getElementById('sTblX'); if (x) x.onclick = () => { try { localStorage.setItem('sTblHide', '1'); } catch (e) {} box.remove(); };
+    } catch (e) { console.warn('positioning table', e); }
+  }
+  drawTable(); setInterval(drawTable, 5 * 60000);
 })();
