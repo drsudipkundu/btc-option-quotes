@@ -5,7 +5,7 @@
 set -e
 cd ~/deltabot
 cp -n chartpage.py chartpage.py.bak3
-OVL=e6f2a64d81d0bb2088915121059c34d54acea53c
+OVL=0362ca70ca0bc3bca400b6a6a3132cddaf3fa9de
 curl -fsSL https://raw.githubusercontent.com/drsudipkundu/btc-option-quotes/main/server/chartpage_patch_strategies.py -o /tmp/chartpage_patch_strategies.py
 python3 /tmp/chartpage_patch_strategies.py chartpage.py
 curl -fsSL https://raw.githubusercontent.com/drsudipkundu/btc-option-quotes/$OVL/userscripts/botchart-overlay.js -o /tmp/botchart-overlay.js
