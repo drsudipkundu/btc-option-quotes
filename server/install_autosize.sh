@@ -1,7 +1,7 @@
 #!/bin/bash
 # 11-Nov-2026: night-sell AUTO SIZE CUT. Adds one cron line at 23:22 IST (server time is IST). Places no orders.
 # It can lower the night base / pause the sale and restart the nightlive service - only when the account is flat.
-# Also refreshes sizecalc.py (Rs 45,000 floor). Nothing is restarted by this install.
+# Also refreshes sizecalc.py (Rs 30,000 floor since 14-Nov-2026). Nothing is restarted by this install.
 set -e
 cd ~/deltabot
 REF=${1:-main}

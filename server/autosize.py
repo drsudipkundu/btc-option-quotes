@@ -1,6 +1,6 @@
 """Night-sell AUTO SIZE CUT (11-Nov-2026, Sudip: "build automatic size cutting, active").
 Runs by cron at 23:22 IST, a few minutes before the 23:30 sale. It NEVER places an order.
-Rule: night base allowed = balance / safe balance per 0.01 BTC (Rs 45,000 floor, from sizecalc), rounded DOWN to 0.01,
+Rule: night base allowed = balance / safe balance per 0.01 BTC (Rs 30,000 floor since 14-Nov-2026, from sizecalc), rounded DOWN to 0.01,
       never above Sudip's own base (the "max base" = the base he armed by hand).
   - allowed < live base  -> lower the base at once (state/night_live_cfg.json) and restart nightlive (only when flat).
   - allowed < 0.01       -> pause tonight's sale (disarm); re-armed by this script when the balance is enough again.

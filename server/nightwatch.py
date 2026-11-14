@@ -13,7 +13,7 @@ Run by cron every minute:   venv/bin/python nightwatch.py
   --test     send a Telegram test message
 
 Levels (Sudip accepted 10-Nov, scale with account equity; only while an option position is open):
-  AMBER    open loss >= backtest worst (USD 93 per 0.01 base) or >= 6 % of equity           -> one alert
+  AMBER    open loss >= backtest worst (USD 196 per 0.01 base) or >= 6 % of equity           -> one alert
   RED      open loss >= 1.5 x that or >= 10 % of equity, or free balance <= 35 % of equity,
            or BTC moved >= 3 % in 15 min against a short                                    -> alert every 2 min until "ack"
   CRITICAL open loss >= 15 % of equity or free balance <= 25 % or liquidation within 1.5 % of price,
@@ -33,7 +33,7 @@ os.chdir(H)
 ACCT = os.environ.get("NW_ACCT", "serverbot")
 AUTO_EXIT = False                      # alerts only; the auto buy-back is added later, only after Sudip confirms
 CPB = 1000.0                           # contracts per BTC
-WORST_USD_PER_001 = 93.0               # backtest worst open loss per 0.01 base (~Rs 7.9k at Rs 85/$)
+WORST_USD_PER_001 = 196.0              # worst open loss per 0.01 base 2020-26, Deribit 6.6 yr (Rs 16,700 at Rs 85/$, BTC 82k); was 93 (Delta 2024-26 only) until 14-Nov-2026
 FX = 88.0                              # rupees per dollar, for display only
 AMBER_PCT, RED_PCT, CRIT_PCT = 0.06, 0.10, 0.15
 RED_FREE, CRIT_FREE, CRIT_LIQ = 0.35, 0.25, 0.015
