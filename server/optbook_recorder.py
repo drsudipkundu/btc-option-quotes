@@ -3,7 +3,7 @@
 Purpose (31-Oct-2026): real option depth for testing the night-sell "smart seller" rules (walk-away price,
 retries, further strikes) before live money.
 
-Which options: the next daily expiry, calls and puts 1%..7% out of the money (all listed strikes in that band).
+Which options: the next daily expiry, calls and puts 1%..12% out of the money (all listed strikes in that band).
 How often: every 30 s in the busy windows (23:10-01:00 IST entry, 16:55-17:35 IST exit),
 every 5 minutes the rest of the time (buy-back / crash-guard hours).
 One JSON line per option per snapshot -> ~/deltabot/optbook/YYYYMMDD_HH.jsonl (finished hours gzipped):
@@ -17,7 +17,7 @@ socket.getaddrinfo = lambda h, p, f=0, t=0, pr=0, fl=0: _orig(h, p, socket.AF_IN
 API = "https://api.india.delta.exchange"
 OUT = os.path.expanduser(os.environ.get("OPTBOOK_DIR", "~/deltabot/optbook"))
 LEVELS = 20
-BAND = (0.01, 0.07)
+BAND = (0.01, 0.12)   # 15-Nov-2026: widened from 7 % so far options (4-6 % beyond the sold strike) are recorded
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 UTC = dt.timezone.utc
 os.makedirs(OUT, exist_ok=True)
