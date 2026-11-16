@@ -269,8 +269,7 @@ def answer(subject, body):
         from dotenv import load_dotenv
         load_dotenv(os.path.join(HOME, ".env"))
         import bot as B
-        B.MODE = "LIVE"
-        B.Notifier().send("LETTERBOX " + subject, body)
+        B.Notifier()._send_now("[DeltaBot LIVE] LETTERBOX " + subject, body)     # sent before this short program ends
     except Exception as e:
         print("email failed:", type(e).__name__)
     try:
