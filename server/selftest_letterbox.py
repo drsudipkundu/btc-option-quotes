@@ -36,6 +36,27 @@ try:
     assert LB.telegram("/exit yes", st).startswith("EXIT asks") and control.get("nlive")["state"] == "running"      # too late = asks again
     assert LB.telegram("/exit yes", st).startswith("EXIT STARTED") and control.get("nlive")["state"] == "stopped"
     assert LB.run("clear_halt", []).startswith("REFUSED") and LB.run("restart", ["nightlive"]).startswith("REFUSED")
+    # ---- update with Sudip's yes
+    sha = "a" * 40
+    assert LB.install_text() == "No update is waiting."
+    for bad in (["x.sh"], ["install_x.sh; rm"], ["../install_x.sh"], [], ["install_a.sh", "b"]):
+        assert LB.request_install("t1", bad, "n", sha).startswith("REFUSED"), bad
+    assert LB.request_install("t1", ["install_x.sh"], "n", "zz").startswith("REFUSED")
+    sent, LB.answer = [], (lambda subj, body: sent.append((subj, body)))
+    LB.curl = lambda url, extra=(): "echo RUNNING $1; echo %s" % url.split("/")[-1]
+    assert "WAITING" in LB.request_install("t1", ["install_x.sh"], "test update", sha)
+    LB.run_approved(); assert not sent                                      # not approved = nothing runs
+    assert LB.telegram("/install", st).startswith("Waiting for your yes")
+    assert LB.telegram("/install no", st).startswith("Update dropped"); LB.run_approved(); assert not sent
+    assert LB.telegram("/install yes", st) == "No update is waiting."
+    LB.request_install("t2", ["install_x.sh"], "test update", sha)
+    pj = json.load(open(LB.PEND_F)); pj["asked"] -= 3600; json.dump(pj, open(LB.PEND_F, "w"))
+    assert "lapsed" in LB.telegram("/install yes", st); LB.run_approved(); assert not sent      # too late = nothing runs
+    LB.request_install("t3", ["install_x.sh"], "test update", sha)
+    assert LB.telegram("/install yes", st).startswith("APPROVED")
+    LB.run_approved(); assert len(sent) == 1 and "DONE" in sent[0][0] and "RUNNING " + sha in sent[0][1] and "install_x.sh" in sent[0][1], sent
+    LB.run_approved(); assert len(sent) == 1                                # never twice
+    assert LB.telegram("/install yes", st) == "No update is waiting."
     print("SELFTEST LETTERBOX PASSED")
 finally:
     shutil.rmtree(tmp, ignore_errors=True)

@@ -16,7 +16,10 @@ refused and reported. Each instruction runs once (by its id), must be younger th
   restart NAME           restart one service: nightlive (only when nothing is open), nightbot, shadowbot, variantbot, ui
   tail NAME [n]          last n lines (max 80) of a file in logs/
   log                    last rows of the live trade log
-There is NO instruction to buy, sell, exit, change the account, the keys or the code.
+  install NAME           ASKS Sudip on Telegram to approve running the installer server/NAME (install_*.sh) taken from the very
+                         repository version that carried the instruction. Nothing runs unless he answers /install yes within
+                         30 minutes. Then the installer runs with its own safety rules; its output comes by email.
+There is NO instruction to buy, sell, exit, or change the account or the keys.
 
 The same actions serve the Telegram commands /hedge /base /log /services /clearhalt /exit (see telegram()).
   venv/bin/python letterbox.py            one look (what cron runs)
@@ -36,6 +39,8 @@ if not os.path.exists(PY):
 SERVICES = ("nightlive", "nightbot", "shadowbot", "variantbot", "ui", "ladderlive")
 RESTARTABLE = ("nightlive", "nightbot", "shadowbot", "variantbot", "ui")
 MAX_AGE_S = 6 * 3600
+PEND_F = os.path.join(HOME, "state", "letterbox_pending.json")
+APPROVE_S = 30 * 60
 
 
 def jload(p, d=None):
@@ -204,6 +209,69 @@ def do_status(a):
     return "\n".join(L)
 
 
+# ---------------------------------------------------------------- update of the code, only with Sudip's yes on Telegram
+def request_install(cid, args, note, sha):
+    if len(args) != 1 or not re.fullmatch(r"install_[a-z0-9_]{1,40}\.sh", args[0]):
+        return "REFUSED: install NAME - NAME must be an installer file like install_xyz.sh"
+    if not re.fullmatch(r"[0-9a-f]{40}", sha or ""):
+        return "REFUSED: no repository version"
+    note = re.sub(r"[^\x20-\x7e]", " ", str(note or ""))[:400] or "(no description given)"
+    jsave(PEND_F, dict(id=cid, script=args[0], sha=sha, note=note, asked=time.time(), approved=0, done=False))
+    return ("UPDATE WAITING FOR YOUR YES\nWhat: %s\nInstaller: %s (version %s)\n"
+            "Reply  /install yes  within 30 minutes to install it.  /install no  drops it. No reply = nothing happens." % (note, args[0], sha[:7]))
+
+
+def install_text():
+    p = jload(PEND_F)
+    if not p or p.get("done"):
+        return "No update is waiting."
+    left = APPROVE_S - (time.time() - p.get("asked", 0))
+    if p.get("approved"):
+        return "Update '%s' is approved and starts within 2 minutes." % p.get("script")
+    if left <= 0:
+        return "The update '%s' was not answered in 30 minutes and has lapsed. Ask Claude to send it again." % p.get("script")
+    return "Waiting for your yes (%d minutes left): %s\nInstaller %s. Reply /install yes or /install no." % (left // 60, p.get("note"), p.get("script"))
+
+
+def install_answer(yes):
+    p = jload(PEND_F)
+    if not p or p.get("done") or p.get("approved"):
+        return install_text()
+    if time.time() - p.get("asked", 0) > APPROVE_S:
+        return install_text()
+    if not yes:
+        p["done"] = True
+        jsave(PEND_F, p)
+        return "Update dropped. Nothing was installed."
+    p["approved"] = time.time()
+    jsave(PEND_F, p)
+    return "APPROVED. The update '%s' starts within 2 minutes; the result comes here and by email." % p["script"]
+
+
+def run_approved():
+    p = jload(PEND_F)
+    if not p or p.get("done") or not p.get("approved"):
+        return
+    p["done"] = True
+    jsave(PEND_F, p)                                       # marked BEFORE running: never twice
+    if time.time() - p["approved"] > 900:
+        answer("%s install NOT RUN" % p["id"], "the approval is older than 15 minutes - ask Claude to send the update again")
+        return
+    try:
+        body = curl("https://raw.githubusercontent.com/%s/%s/server/%s" % (REPO, p["sha"], p["script"]))
+        f = os.path.join(HOME, "state", "letterbox_run.sh")
+        open(f, "w").write(body)
+        r = subprocess.run(["bash", f, p["sha"]], capture_output=True, text=True, timeout=900, cwd=HOME)
+        out = (r.stdout + "\n" + r.stderr).strip()
+        ok = r.returncode == 0
+    except Exception as e:
+        out, ok = "could not run the installer: %s %s" % (type(e).__name__, str(e)[:200]), False
+    print(dt.datetime.now(IST).strftime("%Y-%m-%d %H:%M"), p["id"], "install", p["script"], p["sha"][:7], "->", "OK" if ok else "FAILED")
+    lines = out.splitlines()
+    answer("%s install %s %s" % (p["id"], p["script"], "DONE" if ok else "FAILED / REFUSED"),
+           "%s\n\n%s" % ("\n".join(lines[-6:]), "\n".join(lines[-80:])))
+
+
 ACTIONS = dict(status=do_status, pause=do_pause, resume=do_resume, wing=do_wing, ceiling=do_ceiling, autosize=do_autosize,
                clear_halt=do_clear_halt, restart=do_restart, tail=do_tail, log=do_log)
 
@@ -222,7 +290,7 @@ def run(do, args):
 
 # ---------------------------------------------------------------- Telegram (called by nightwatch.py, only from Sudip's own chat)
 TG_HELP = ("More commands: /hedge = hedge now | /hedge on | /hedge off | /hedge 6 (percent) | /base = base and automatic size | "
-           "/log = last trades | /services = are the bots running | /clearhalt | /exit = buy back everything now (asks to confirm)")
+           "/log = last trades | /services = are the bots running | /clearhalt | /exit = buy back everything now (asks to confirm) | /install = update waiting for your yes")
 
 
 def telegram(text, st):
@@ -240,6 +308,8 @@ def telegram(text, st):
         return services_text()
     if c == "/clearhalt":
         return run("clear_halt", [])
+    if c == "/install":
+        return install_text() if not a else install_answer(a == ["yes"]) if a in (["yes"], ["no"]) else "Reply /install yes or /install no."
     if c == "/exit":
         legs = open_legs()
         if not legs:
@@ -280,6 +350,13 @@ def answer(subject, body):
 
 
 def look():
+    import fcntl
+    lock = open(os.path.join(HOME, "state", "letterbox.lock"), "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return                                             # an earlier look (an installer) is still running
+    run_approved()
     st = jload(ST_F)
     sha = curl("https://api.github.com/repos/%s/commits/main" % REPO, ["-H", "Accept: application/vnd.github.sha"]).strip()
     if not re.fullmatch(r"[0-9a-f]{40}", sha):
@@ -313,7 +390,10 @@ def look():
         if not (-600 <= age <= MAX_AGE_S):
             answer("%s REFUSED" % cid, "instruction '%s' is older than 6 hours (or has no time) - not done" % do[:30])
             continue
-        res = run(do, c.get("args") if isinstance(c.get("args"), list) else [])
+        if do == "install":
+            res = request_install(cid, [str(x) for x in c.get("args", [])] if isinstance(c.get("args"), list) else [], c.get("note"), sha)
+        else:
+            res = run(do, c.get("args") if isinstance(c.get("args"), list) else [])
         print(dt.datetime.now(IST).strftime("%Y-%m-%d %H:%M"), cid, do, c.get("args"), "->", res.splitlines()[0][:150] if res else "")
         answer("%s %s" % (cid, do), res)
     st.update(sha=sha, done=done[-200:])
