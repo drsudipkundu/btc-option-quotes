@@ -36,6 +36,12 @@ try:
     assert LB.telegram("/exit yes", st).startswith("EXIT asks") and control.get("nlive")["state"] == "running"      # too late = asks again
     assert LB.telegram("/exit yes", st).startswith("EXIT STARTED") and control.get("nlive")["state"] == "stopped"
     assert LB.run("clear_halt", []).startswith("REFUSED") and LB.run("restart", ["nightlive"]).startswith("REFUSED")
+    # ---- read-only Delta looks: argument checks only (no network here)
+    for do, bad in (("quote", ["BTC"]), ("quote", ["C-BTC-1-1; ls"]), ("quote", []), ("chain", ["X"]), ("chain", []), ("fills", ["999"]), ("fills", ["a"])):
+        assert LB.run(do, bad).startswith("REFUSED"), (do, bad)
+    assert LB.run("orders", []).startswith("FAILED") or "order" in LB.run("orders", []).lower()      # no key here: fails cleanly, no crash
+    assert set(c[1:] for c in LB.TG_CMDS if c[1:] in LB.ACTIONS) >= {"orders", "fills", "quote", "chain"}
+    assert LB._t("2026-11-16T10:00:00Z") == "16-Nov 15:30:00" and LB._t(1794823200000000) == LB._t(1794823200)
     # ---- update with Sudip's yes
     sha = "a" * 40
     assert LB.install_text() == "No update is waiting."

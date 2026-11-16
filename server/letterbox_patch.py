@@ -4,7 +4,7 @@
 import os, sys, shutil
 H = os.environ.get("BOT_HOME", os.path.expanduser("~/deltabot"))
 EDITS = [
- ('''        elif c in ("/help", "/start"):''', '''        elif c.split()[0] in ("/hedge", "/base", "/log", "/services", "/clearhalt", "/exit", "/install"):
+ ('''        elif c in ("/help", "/start"):''', '''        elif c.split()[0] in __import__("letterbox").TG_CMDS:
             try:
                 import letterbox as LB
                 tg_send(LB.telegram(c, st)[:3800])
@@ -13,15 +13,22 @@ EDITS = [
         elif c in ("/help", "/start"):'''),
  ('''ack = pause repeated alerts 30 min | /help")''', '''ack = pause repeated alerts 30 min | /hedge = hedge now, /hedge on, /hedge off | "
         "/base = base and automatic size | /log = last trades | /services = are the bots running | /clearhalt | "
-        "/exit = buy back everything now (asks to confirm) | /install = update waiting for your yes | /help")'''),
+        "/exit = buy back everything now (asks to confirm) | /install = update waiting for your yes | "
+        "/orders | /fills | /quote SYMBOL | /chain c or p | /help")'''),
 ]
-UPGRADE = ('''("/hedge", "/base", "/log", "/services", "/clearhalt", "/exit"):''', '''("/hedge", "/base", "/log", "/services", "/clearhalt", "/exit", "/install"):''')
+OLD_TUPLES = ('''("/hedge", "/base", "/log", "/services", "/clearhalt", "/exit"):''', '''("/hedge", "/base", "/log", "/services", "/clearhalt", "/exit", "/install"):''')
 p = os.path.join(H, "nightwatch.py"); s = open(p).read()
 if "import letterbox as LB" in s:
-    if s.count(UPGRADE[0]) == 1:                           # first version installed earlier today: add /install
-        open(p + ".tmp", "w").write(s.replace(UPGRADE[0], UPGRADE[1]).replace("(asks to confirm) | /help", "(asks to confirm) | /install = update waiting for your yes | /help")); os.replace(p + ".tmp", p)
-        print("nightwatch.py: /install added")
-    else:
+    done = False
+    for t in OLD_TUPLES:                                   # earlier versions listed the commands here; now letterbox.py holds the list
+        if s.count("c.split()[0] in " + t) == 1:
+            s = s.replace("c.split()[0] in " + t, 'c.split()[0] in __import__("letterbox").TG_CMDS:')
+            for h in ("(asks to confirm) | /install = update waiting for your yes | /help", "(asks to confirm) | /help"):
+                if h in s:
+                    s = s.replace(h, "(asks to confirm) | /install | /orders | /fills | /quote SYMBOL | /chain c or p | /help"); break
+            open(p + ".tmp", "w").write(s); os.replace(p + ".tmp", p); done = True
+            print("nightwatch.py: command list now comes from letterbox.py")
+    if not done:
         print("already patched")
     sys.exit(0)
 for old, new in EDITS:

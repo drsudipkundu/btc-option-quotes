@@ -1,13 +1,13 @@
 {
  "commands": [
   {
-   "id": "2026-11-16-03",
-   "t": 1794823502,
+   "id": "2026-11-16-04",
+   "t": 1794824081,
    "do": "install",
    "args": [
-    "install_hello.sh"
+    "install_letterbox.sh"
    ],
-   "note": "DRILL ONLY - a harmless test of the update path. It changes nothing, only reports that the bots are running."
+   "note": "Read-only looks at Delta for Claude and for you: orders resting, last fills, quote of a strike, tonight strikes. Cannot trade. No bot is restarted."
   }
  ]
 }

@@ -16,6 +16,10 @@ refused and reported. Each instruction runs once (by its id), must be younger th
   restart NAME           restart one service: nightlive (only when nothing is open), nightbot, shadowbot, variantbot, ui
   tail NAME [n]          last n lines (max 80) of a file in logs/
   log                    last rows of the live trade log
+  orders                 READ ONLY: orders resting on Delta now (e.g. the 10 % buy-back orders)
+  fills [n]              READ ONLY: last n (max 40) fills with price and fee, from Delta's own record
+  quote SYMBOL           READ ONLY: bid / ask / mark and the top of the order book of one option (C-BTC-67200-171126) or BTCUSD
+  chain C|P              READ ONLY: tonight's listed calls or puts within 10 % of the BTC price: bid, ask, mark
   install NAME           ASKS Sudip on Telegram to approve running the installer server/NAME (install_*.sh) taken from the very
                          repository version that carried the instruction. Nothing runs unless he answers /install yes within
                          30 minutes. Then the installer runs with its own safety rules; its output comes by email.
@@ -209,6 +213,100 @@ def do_status(a):
     return "\n".join(L)
 
 
+# ---------------------------------------------------------------- READ-ONLY looks at Delta (GET requests only)
+def _delta():
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(HOME, ".env"))
+    from liveorders import Live, Pub
+    return Live(str(night_cfg().get("acct") or "serverbot")), Pub()
+
+
+def _f(x):
+    try:
+        return float(x)
+    except Exception:
+        return 0.0
+
+
+def _t(x):
+    """Delta time (text or microseconds) -> IST text"""
+    try:
+        if isinstance(x, (int, float)) or str(x).isdigit():
+            v = float(x)
+            while v > 4e9:
+                v /= 1000.0
+            return dt.datetime.fromtimestamp(v, IST).strftime("%d-%b %H:%M:%S")
+        return dt.datetime.fromisoformat(str(x).replace("Z", "+00:00")).astimezone(IST).strftime("%d-%b %H:%M:%S")
+    except Exception:
+        return str(x)[:19]
+
+
+def do_orders(a):
+    lv, _ = _delta()
+    r = lv._p("GET", "/v2/orders", {"states": "open,pending"}).get("result") or []
+    if not r:
+        return "No orders are resting on Delta."
+    L = ["%d order(s) resting on Delta:" % len(r)]
+    for o in r[:40]:
+        L.append("%s %s %s  size %s (unfilled %s) @ %s  %s%s  placed %s" % (
+            o.get("product_symbol"), str(o.get("side", "")).upper(), o.get("order_type", ""), o.get("size"), o.get("unfilled_size"),
+            o.get("limit_price") or o.get("stop_price"), o.get("state"), " reduce-only" if o.get("reduce_only") else "", _t(o.get("created_at"))))
+    return "\n".join(L)
+
+
+def do_fills(a):
+    n = 15
+    if a:
+        if len(a) != 1 or not re.fullmatch(r"\d{1,2}", a[0]):
+            return "REFUSED: fills [n] - n is 1 to 40"
+        n = max(1, min(40, int(a[0])))
+    lv, _ = _delta()
+    r = lv._p("GET", "/v2/fills", {"page_size": n}).get("result") or []
+    if not r:
+        return "Delta shows no fills."
+    L = ["last %d fill(s) from Delta (newest first):" % len(r[:n])]
+    for x in r[:n]:
+        L.append("%s  %s %s  %s contracts @ %s  fee %s  %s" % (
+            _t(x.get("created_at")), x.get("product_symbol"), str(x.get("side", "")).upper(), x.get("size"), x.get("price"),
+            x.get("commission"), x.get("role") or ""))
+    return "\n".join(L)
+
+
+def do_quote(a):
+    if len(a) != 1 or not re.fullmatch(r"(?:[CP]-BTC-\d{4,7}-\d{6}|BTCUSD)", a[0].upper()):
+        return "REFUSED: quote SYMBOL - like C-BTC-67200-171126 or BTCUSD"
+    sym = a[0].upper()
+    _, pub = _delta()
+    t = pub._http("GET", "/v2/tickers/%s" % sym)["result"]
+    q = t.get("quotes") or {}
+    L = ["%s  bid %s  ask %s  mark %s  BTC %s  %s" % (sym, q.get("best_bid"), q.get("best_ask"), t.get("mark_price"), t.get("spot_price"),
+                                                   ("mark IV %s" % q.get("mark_iv")) if q.get("mark_iv") else "")]
+    try:
+        b = pub._http("GET", "/v2/l2orderbook/%s" % sym, {"depth": 5})["result"]
+        L.append("buyers : " + ("  ".join("%s x%s" % (x.get("price"), x.get("size")) for x in (b.get("buy") or [])[:5]) or "none"))
+        L.append("sellers: " + ("  ".join("%s x%s" % (x.get("price"), x.get("size")) for x in (b.get("sell") or [])[:5]) or "none"))
+    except Exception as e:
+        L.append("order book not read (%s)" % type(e).__name__)
+    return "\n".join(L)
+
+
+def do_chain(a):
+    if len(a) != 1 or a[0].upper() not in ("C", "P"):
+        return "REFUSED: chain C  or  chain P"
+    typ = "CE" if a[0].upper() == "C" else "PE"
+    from nightlogic import next_expiry_ts
+    _, pub = _delta()
+    spot = _f(pub._http("GET", "/v2/tickers/BTCUSD")["result"].get("spot_price"))
+    exp = next_expiry_ts(time.time())
+    ch = sorted([o for o in pub.chain(exp) if o["typ"] == typ and abs(o["strike"] - spot) <= 0.10 * spot], key=lambda o: o["strike"])
+    L = ["%s expiring %s IST, BTC %.0f  (strike: bid / ask / mark, distance)" % ("CALLS" if typ == "CE" else "PUTS",
+         dt.datetime.fromtimestamp(exp, IST).strftime("%d-%b %H:%M"), spot)]
+    for o in ch:
+        if (typ == "CE") == (o["strike"] >= spot):                # out-of-the-money side only
+            L.append("%.0f: %s / %s / %.1f  (%+.1f %%)" % (o["strike"], o["bid"] or "-", o["ask"] or "-", o["mark"], (o["strike"] / spot - 1) * 100))
+    return "\n".join(L[:70])
+
+
 # ---------------------------------------------------------------- update of the code, only with Sudip's yes on Telegram
 def request_install(cid, args, note, sha):
     if len(args) != 1 or not re.fullmatch(r"install_[a-z0-9_]{1,40}\.sh", args[0]):
@@ -273,7 +371,8 @@ def run_approved():
 
 
 ACTIONS = dict(status=do_status, pause=do_pause, resume=do_resume, wing=do_wing, ceiling=do_ceiling, autosize=do_autosize,
-               clear_halt=do_clear_halt, restart=do_restart, tail=do_tail, log=do_log)
+               clear_halt=do_clear_halt, restart=do_restart, tail=do_tail, log=do_log,
+               orders=do_orders, fills=do_fills, quote=do_quote, chain=do_chain)
 
 
 def run(do, args):
@@ -289,8 +388,9 @@ def run(do, args):
 
 
 # ---------------------------------------------------------------- Telegram (called by nightwatch.py, only from Sudip's own chat)
+TG_CMDS = ("/hedge", "/base", "/log", "/services", "/clearhalt", "/exit", "/install", "/orders", "/fills", "/quote", "/chain")
 TG_HELP = ("More commands: /hedge = hedge now | /hedge on | /hedge off | /hedge 6 (percent) | /base = base and automatic size | "
-           "/log = last trades | /services = are the bots running | /clearhalt | /exit = buy back everything now (asks to confirm) | /install = update waiting for your yes")
+           "/log = last trades | /services = are the bots running | /clearhalt | /exit = buy back everything now (asks to confirm) | /install = update waiting for your yes | /orders = orders resting on Delta | /fills = last fills | /quote C-BTC-67200-171126 | /chain c or /chain p = tonight's strikes")
 
 
 def telegram(text, st):
@@ -308,6 +408,8 @@ def telegram(text, st):
         return services_text()
     if c == "/clearhalt":
         return run("clear_halt", [])
+    if c in ("/orders", "/fills", "/quote", "/chain"):
+        return run(c[1:], [x.upper() if c in ("/quote", "/chain") else x for x in a])[-3500:]
     if c == "/install":
         return install_text() if not a else install_answer(a == ["yes"]) if a in (["yes"], ["no"]) else "Reply /install yes or /install no."
     if c == "/exit":
