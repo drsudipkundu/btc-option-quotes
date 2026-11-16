@@ -27,7 +27,7 @@ def sym(typ, k):
 class Fake:
     """pretend exchange: one bid and one ask per option, priced from the BTC price"""
     def __init__(self):
-        self.spot, self.pos, self.ords, self.nid, self.no_ask, self.wing_px, self.late = 82000.0, {}, {}, 1, set(), None, False
+        self.spot, self.pos, self.ords, self.nid, self.no_ask, self.wing_px, self.late, self.late_bid = 82000.0, {}, {}, 1, set(), None, False, 0.0
 
     def px(self, typ, k):
         d = (self.spot - k) / self.spot if typ == "PE" else (k - self.spot) / self.spot      # > 0 = out of the money
@@ -47,6 +47,8 @@ class Fake:
             ask = self.wing_px
         if s in self.no_ask or (self.late and v < 1.0):
             ask = 0.0
+        if self.late and v < 1.0 and self.late_bid:
+            bid = self.late_bid
         return bid, ask
 
     def chain(self):
@@ -103,15 +105,15 @@ class Fake:
                 o["state"] = "cancelled"
 
 
-def night(name, wing, crash=False, limits=None, no_far_ask=False, wing_px=None):
+def night(name, wing, crash=False, limits=None, no_far_ask=False, wing_px=None, late_bid=0.0):
     for f in os.listdir(tmp + "/state"):
         os.remove(tmp + "/state/" + f)
     for f in os.listdir(tmp + "/logs"):
         os.remove(tmp + "/logs/" + f)
-    json.dump(dict(armed=True, acct="test", base=0.06, client="paper", rule="v5asl", wing=wing, retry_wait_s=0, polite_s=0, fill_wait_s=0), open(LV.CFG_F, "w"))
+    json.dump(dict(armed=True, acct="test", base=0.06, client="paper", rule="v5asl", wing=wing, retry_wait_s=0, polite_s=0, fill_wait_s=0, wing_polite_s=0.05, wing_sell_every_s=0), open(LV.CFG_F, "w"))
     json.dump(limits or dict(max_order_btc=0.36, max_open_btc=0.72, daily_loss_usd=60), open(guard.LIMITS_F, "w"))
     ex, msgs, clock = Fake(), [], [dt.datetime(2026, 11, 16, 23, 31, tzinfo=IST)]
-    ex.wing_px = wing_px
+    ex.wing_px, ex.late_bid = wing_px, late_bid
     if no_far_ask:
         for k in range(60000, 100001, 200):
             if 75000 <= k <= 77000:
@@ -154,6 +156,7 @@ def night(name, wing, crash=False, limits=None, no_far_ask=False, wing_px=None):
     tick(day.replace(hour=17, minute=31), ex.spot, late=True)
     info["halt_after_expiry"] = n.S.get("halt")
     tick(day.replace(hour=17, minute=41), ex.spot, late=True)
+    info["polite"] = sum(1 for o in ex.ords.values() if o["side"] == "buy" and not o["ro"] and o["state"] == "cancelled")
     info.update(open_end=len(n.open_legs()), pnl=round((n.S.get("last_night") or {}).get("pnl", 0.0), 2), halt=n.S.get("halt"),
                 msgs=msgs, rows=[r["event"] for r in __import__("csv").DictReader(open(n.csv_path))] if os.path.exists(n.csv_path) else [])
     print("\n--- %s" % name)
@@ -197,6 +200,25 @@ try:
     f = night("6 size limit too small for the hedge", 0.04, limits=dict(max_order_btc=0.36, max_open_btc=0.30, daily_loss_usd=60))
     assert any("size limit" in m for m in f["msgs"]) and not f["halt"] and f["open_end"] == 0
     assert abs(sum(s[1] for s in f["sold"]) - 0.24) < 1e-9
+
+    g = night("7 calm night, somebody bids for the far options after the buy-back", 0.04, late_bid=0.3)
+    assert g["rows"].count("EXIT-HEDGE") == 2 and "SETTLE-WING" not in g["rows"] and g["after_buyback"] == [] and not g["halt"], g["rows"]
+    assert a["polite"] >= 2, "the polite middle bid must be tried first"
+    print("   => smart buy: %d polite middle bids were tried before paying the asking price (night 1)" % a["polite"])
+
+    import autosize as AZ
+    now = 1794800000.0
+    D = AZ.decide(6000.0, 375.0, 0.06, True, dict(last_set=0.06, max_base=0.06, last_change_ts=now - 3600), now)
+    assert D["action"] == "none" and D["base"] == 0.06, D                      # old rule: no raise above the hand-armed base
+    st = dict(last_set=0.06, max_base=0.06, last_change_ts=now - 3600, ceiling=0.12, ceiling_from_ts=now + 3600)
+    assert AZ.decide(6000.0, 375.0, 0.06, True, st, now)["action"] == "none"   # ceiling not started yet
+    st["ceiling_from_ts"] = now - 60
+    D = AZ.decide(6000.0, 375.0, 0.06, True, st, now); assert D["action"] == "raise" and D["base"] == 0.12, D       # balance allows 0.16 -> ceiling 0.12
+    D = AZ.decide(3400.0, 375.0, 0.06, True, st, now); assert D["action"] == "raise" and D["base"] == 0.09, D
+    D = AZ.decide(3000.0, 375.0, 0.12, True, dict(st, last_set=0.12), now); assert D["action"] == "cut" and D["base"] == 0.08, D
+    D = AZ.decide(6000.0, 375.0, 0.12, True, dict(st, last_set=0.12), now); assert D["action"] == "none", D
+    D = AZ.decide(200.0, 375.0, 0.12, True, dict(st, last_set=0.12), now); assert D["action"] == "pause", D
+    print("\n--- 8 automatic base with a ceiling of 0.12: raise to what the balance allows, cut at once, never above the ceiling: OK")
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 print("\nSELFTEST WING PASSED")
