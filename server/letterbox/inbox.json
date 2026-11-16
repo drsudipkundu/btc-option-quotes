@@ -1,13 +1,16 @@
 {
  "commands": [
   {
-   "id": "2026-11-16-09",
-   "t": 1794824711,
-   "do": "install",
-   "args": [
-    "install_letterbox.sh"
-   ],
-   "note": "/codes: the list of all Telegram codes with what each does, also shown when you type / . Plus a small fix of the strike list. Cannot trade. No bot is restarted."
+   "id": "2026-11-16-10",
+   "t": 1794831173,
+   "do": "status",
+   "args": []
+  },
+  {
+   "id": "2026-11-16-11",
+   "t": 1794831173,
+   "do": "orders",
+   "args": []
   }
  ]
 }
