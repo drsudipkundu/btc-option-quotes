@@ -1,1 +1,13 @@
-{"commands": []}
+{
+ "commands": [
+  {
+   "id": "2026-11-16-03",
+   "t": 1794823502,
+   "do": "install",
+   "args": [
+    "install_hello.sh"
+   ],
+   "note": "DRILL ONLY - a harmless test of the update path. It changes nothing, only reports that the bots are running."
+  }
+ ]
+}
