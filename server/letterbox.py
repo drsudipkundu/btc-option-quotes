@@ -298,6 +298,9 @@ def do_chain(a):
     _, pub = _delta()
     spot = _f(pub._http("GET", "/v2/tickers/BTCUSD")["result"].get("spot_price"))
     exp = next_expiry_ts(time.time())
+    n = dt.datetime.now(IST)
+    if not open_legs() and n.hour * 100 + n.minute < 1730:
+        exp = next_expiry_ts(exp + 60)                     # before 17:30 with nothing open: show the series tonight's sale will use
     ch = sorted([o for o in pub.chain(exp) if o["typ"] == typ and abs(o["strike"] - spot) <= 0.10 * spot], key=lambda o: o["strike"])
     L = ["%s expiring %s IST, BTC %.0f  (strike: bid / ask / mark, distance)" % ("CALLS" if typ == "CE" else "PUTS",
          dt.datetime.fromtimestamp(exp, IST).strftime("%d-%b %H:%M"), spot)]
@@ -388,7 +391,47 @@ def run(do, args):
 
 
 # ---------------------------------------------------------------- Telegram (called by nightwatch.py, only from Sudip's own chat)
-TG_CMDS = ("/hedge", "/base", "/log", "/services", "/clearhalt", "/exit", "/install", "/orders", "/fills", "/quote", "/chain")
+TG_CMDS = ("/hedge", "/base", "/log", "/services", "/clearhalt", "/exit", "/install", "/orders", "/fills", "/quote", "/chain",
+           "/codes", "/help", "/start")
+CODES = [                                                  # (command, what it does) - also the menu Telegram shows when "/" is typed
+    ("status", "Night account now: balance, open loss, positions"),
+    ("result", "Last night's result and the running total"),
+    ("log", "Last rows of the live trade log"),
+    ("orders", "Orders resting on Delta now"),
+    ("fills", "Last fills with price and fee"),
+    ("chain", "Tonight's strikes: /chain c (calls) or /chain p (puts)"),
+    ("quote", "Price of one option: /quote C-BTC-67200-171126"),
+    ("hedge", "Hedge setting. Change: /hedge on, /hedge off, /hedge 6"),
+    ("base", "Base size and the automatic size rule"),
+    ("services", "Are all the bots running"),
+    ("pause", "No new night sales (open position stays)"),
+    ("resume", "Allow night sales again"),
+    ("exit", "Buy back everything now - asks you to confirm"),
+    ("install", "Update waiting for your yes: /install yes or /install no"),
+    ("clearhalt", "Clear a position-mismatch halt (only when nothing is open)"),
+    ("codes", "This list"),
+]
+
+
+def codes_text():
+    return ("CODES you can send here:\n" + "\n".join("/%s - %s" % c for c in CODES)
+            + "\nack - pause repeated alerts for 30 minutes\nTip: type / and Telegram shows this list to tap.")
+
+
+def set_menu():
+    """put the list into Telegram's own menu (shown when "/" is typed). The token is never printed."""
+    try:
+        import urllib.request
+        import nightwatch as NW
+        tok, chat = NW.tg_cfg()
+        if not tok:
+            return "telegram not configured"
+        data = json.dumps({"commands": [{"command": c, "description": d[:250]} for c, d in CODES]}).encode()
+        req = urllib.request.Request("https://api.telegram.org/bot%s/setMyCommands" % tok, data, {"Content-Type": "application/json"})
+        ok = json.load(urllib.request.urlopen(req, timeout=15)).get("ok")
+        return "Telegram menu set (%d codes)" % len(CODES) if ok else "Telegram refused the menu"
+    except Exception as e:
+        return "Telegram menu not set (%s)" % type(e).__name__
 TG_HELP = ("More commands: /hedge = hedge now | /hedge on | /hedge off | /hedge 6 (percent) | /base = base and automatic size | "
            "/log = last trades | /services = are the bots running | /clearhalt | /exit = buy back everything now (asks to confirm) | /install = update waiting for your yes | /orders = orders resting on Delta | /fills = last fills | /quote C-BTC-67200-171126 | /chain c or /chain p = tonight's strikes")
 
@@ -396,6 +439,8 @@ TG_HELP = ("More commands: /hedge = hedge now | /hedge on | /hedge off | /hedge 
 def telegram(text, st):
     p = text.split()
     c, a = p[0], p[1:]
+    if c in ("/codes", "/help", "/start"):
+        return codes_text()
     if c == "/hedge":
         if not a:
             return hedge_text() + "\nChange: /hedge on, /hedge off, /hedge 6"
@@ -503,7 +548,9 @@ def look():
 
 
 if __name__ == "__main__":
-    if "--do" in sys.argv:
+    if "--menu" in sys.argv:
+        print(set_menu())
+    elif "--do" in sys.argv:
         i = sys.argv.index("--do")
         print(run(sys.argv[i + 1], sys.argv[i + 2:]))
     else:

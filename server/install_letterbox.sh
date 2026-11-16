@@ -13,4 +13,5 @@ echo "SELFTEST LETTERBOX PASSED"
 ./venv/bin/python letterbox.py; cat state/letterbox.json; echo
 crontab -l | grep -c letterbox
 ./venv/bin/python nightwatch.py >/dev/null 2>&1 && echo "nightwatch runs OK"
+./venv/bin/python letterbox.py --menu
 echo "LETTERBOX INSTALL DONE"

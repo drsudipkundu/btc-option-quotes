@@ -1,34 +1,13 @@
 {
  "commands": [
   {
-   "id": "2026-11-16-05",
-   "t": 1794824351,
-   "do": "orders",
-   "args": []
-  },
-  {
-   "id": "2026-11-16-06",
-   "t": 1794824351,
-   "do": "fills",
+   "id": "2026-11-16-09",
+   "t": 1794824711,
+   "do": "install",
    "args": [
-    "6"
-   ]
-  },
-  {
-   "id": "2026-11-16-07",
-   "t": 1794824351,
-   "do": "chain",
-   "args": [
-    "P"
-   ]
-  },
-  {
-   "id": "2026-11-16-08",
-   "t": 1794824351,
-   "do": "quote",
-   "args": [
-    "BTCUSD"
-   ]
+    "install_letterbox.sh"
+   ],
+   "note": "/codes: the list of all Telegram codes with what each does, also shown when you type / . Plus a small fix of the strike list. Cannot trade. No bot is restarted."
   }
  ]
 }

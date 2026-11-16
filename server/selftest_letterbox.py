@@ -36,6 +36,8 @@ try:
     assert LB.telegram("/exit yes", st).startswith("EXIT asks") and control.get("nlive")["state"] == "running"      # too late = asks again
     assert LB.telegram("/exit yes", st).startswith("EXIT STARTED") and control.get("nlive")["state"] == "stopped"
     assert LB.run("clear_halt", []).startswith("REFUSED") and LB.run("restart", ["nightlive"]).startswith("REFUSED")
+    t = LB.telegram("/codes", st); assert t == LB.telegram("/help", st) and all(("/" + c) in t for c, d in LB.CODES) and "ack" in t
+    assert all(c == c.lower() and 1 <= len(c) <= 32 and c.isalnum() and 3 <= len(d) <= 256 for c, d in LB.CODES)
     # ---- read-only Delta looks: argument checks only (no network here)
     for do, bad in (("quote", ["BTC"]), ("quote", ["C-BTC-1-1; ls"]), ("quote", []), ("chain", ["X"]), ("chain", []), ("fills", ["999"]), ("fills", ["a"])):
         assert LB.run(do, bad).startswith("REFUSED"), (do, bad)
