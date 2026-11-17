@@ -1,5 +1,5 @@
 #!/bin/bash
-# 17-Nov-2026: capital floor per 0.01 base moves with BTC (both ways); formula counts v5's 4 units and the hedge. No bot is restarted.
+# 17-Nov-2026 (rate set to Rs 85 per dollar, as Delta and the tests use): capital floor per 0.01 base moves with BTC (both ways); formula counts v5's 4 units and the hedge. No bot is restarted.
 set -e
 REF=${1:-main}
 cd ~/deltabot
@@ -12,7 +12,7 @@ restore() { [ -f sizecalc.py.bak1117 ] && cp sizecalc.py.bak1117 sizecalc.py; [ 
 import json, os
 p = "state/sizecalc.json"
 d = json.load(open(p)) if os.path.exists(p) else {}
-d.update(safe_floor_inr=33000, safe_floor_ref_btc=82000)
+d.update(safe_floor_inr=33000, safe_floor_ref_btc=82000, usd_inr=85.0)
 json.dump(d, open(p, "w")); print("sizecalc.json:", d)
 import sizecalc as SC
 S = SC.settings(); ind = dict(hv14=0.30, atr=2600.0)
