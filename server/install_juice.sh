@@ -1,6 +1,6 @@
 #!/bin/bash
-# 17-Nov-2026: juice_patch - the live night seller closes the night when at most 10 % of the night's premium is left to earn
-# (Sudip 17-Nov 09:40). Refuses 22:30-01:00 IST or with an open night position. Sets the rule to 10 %.
+# 17-Nov-2026: juice_patch - the live night seller closes the night when at most 5 % of the night's premium is left to earn
+# (Sudip 17-Nov 09:40). Refuses 22:30-01:00 IST or with an open night position. Sets the rule to 5 % (Sudip 17-Nov 10:19, after the backtest).
 set -e
 REF=${1:-main}
 cd ~/deltabot
@@ -14,7 +14,7 @@ restore() { [ -f nightlive.py.bak1117j ] && cp nightlive.py.bak1117j nightlive.p
 ./venv/bin/python -m py_compile nightlive.py || restore
 ./venv/bin/python selftest_juice.py > logs/selftest_juice.txt 2>&1 || { tail -n 15 logs/selftest_juice.txt; restore; }
 grep -E "^---|=>|PASSED" logs/selftest_juice.txt | cut -c1-150
-./venv/bin/python nightlive.py --juice 10 | cut -c1-200
+./venv/bin/python nightlive.py --juice 5 | cut -c1-200
 sudo systemctl restart nightlive
 sleep 6
 echo "nightlive: $(systemctl is-active nightlive)"
