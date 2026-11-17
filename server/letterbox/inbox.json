@@ -49,13 +49,13 @@
    "args": []
   },
   {
-   "id": "2026-11-17-08",
-   "t": 1794889857,
+   "id": "2026-11-17-09",
+   "t": 1794890993,
    "do": "install",
    "args": [
     "install_floor_and_juice.sh"
    ],
-   "note": "Two updates you asked for today: (1) close the night when 10 pc or less of the night's premium is left to earn; (2) capital per 0.01 moves with the BTC price (47 pc of its value) and rupees are counted at Rs 85 per dollar. Applies from tonight's sale."
+   "note": "REPLACES the earlier request. (1) close the night when 5 pc or less of the night's premium is left to earn (both sides); (2) capital per 0.01 moves with the BTC price (47 pc of its value), rupees at Rs 85 per dollar. Applies from tonight's sale."
   }
  ]
 }
