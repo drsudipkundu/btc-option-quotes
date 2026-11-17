@@ -1,0 +1,4 @@
+slot_utc,slot_ist,tag,reason,logged_utc
+2026-11-16T22:30:00+00:00,2026-11-17T04:00:00+05:30,halfhour,no snapshot in this half-hour (scheduled run skipped or very late),2026-11-17T02:30:19+00:00
+2026-11-16T23:00:00+00:00,2026-11-17T04:30:00+05:30,halfhour,no snapshot in this half-hour (scheduled run skipped or very late),2026-11-17T02:30:19+00:00
+2026-11-16T23:30:00+00:00,2026-11-17T05:00:00+05:30,halfhour,no snapshot in this half-hour (scheduled run skipped or very late),2026-11-17T02:30:19+00:00
