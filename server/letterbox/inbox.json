@@ -44,6 +44,18 @@
     "install_flagpaper.sh"
    ],
    "note": "PAPER ONLY: two more paper copies - any flag x1.5, and any flag x1.5 with no-flag nights at half; live seller untouched"
+  },
+  {
+   "id": "2026-11-19-01",
+   "t": 1795037841,
+   "do": "status",
+   "args": []
+  },
+  {
+   "id": "2026-11-19-02",
+   "t": 1795037841,
+   "do": "orders",
+   "args": []
   }
  ]
 }
