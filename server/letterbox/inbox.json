@@ -1,65 +1,8 @@
 {
  "commands": [
   {
-   "id": "2026-11-17-01",
-   "t": 1794876713,
-   "do": "status",
-   "args": []
-  },
-  {
-   "id": "2026-11-17-02",
-   "t": 1794876713,
-   "do": "orders",
-   "args": []
-  },
-  {
-   "id": "2026-11-17-03",
-   "t": 1794876713,
-   "do": "tail",
-   "args": [
-    "night.log",
-    "10"
-   ]
-  },
-  {
-   "id": "2026-11-17-04",
-   "t": 1794887277,
-   "do": "status",
-   "args": []
-  },
-  {
-   "id": "2026-11-17-05",
-   "t": 1794889725,
-   "do": "status",
-   "args": []
-  },
-  {
-   "id": "2026-11-17-06",
-   "t": 1794889725,
-   "do": "tail",
-   "args": [
-    "nightwatch.log",
-    "25"
-   ]
-  },
-  {
-   "id": "2026-11-17-07",
-   "t": 1794889725,
-   "do": "orders",
-   "args": []
-  },
-  {
-   "id": "2026-11-17-09",
-   "t": 1794890993,
-   "do": "install",
-   "args": [
-    "install_floor_and_juice.sh"
-   ],
-   "note": "REPLACES the earlier request. (1) close the night when 5 pc or less of the night's premium is left to earn (both sides); (2) capital per 0.01 moves with the BTC price (47 pc of its value), rupees at Rs 85 per dollar. Applies from tonight's sale."
-  },
-  {
-   "id": "2026-11-17-10",
-   "t": 1794891535,
+   "id": "2026-11-18-01",
+   "t": 1794963433,
    "do": "status",
    "args": []
   }
