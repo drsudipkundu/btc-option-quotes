@@ -26,6 +26,15 @@
     "install_juice2_wingretry.sh"
    ],
    "note": "5 pc rule on net credit incl. hedge resale value; missing hedges retried every 5 minutes"
+  },
+  {
+   "id": "2026-11-18-05",
+   "t": 1794994973,
+   "do": "install",
+   "args": [
+    "install_richpaper.sh"
+   ],
+   "note": "PAPER ONLY: new paper copy V5A-CG-SL-P, trend leg x1.5 when premium is in the top 10 pc of its last 365 days; live seller untouched"
   }
  ]
 }
