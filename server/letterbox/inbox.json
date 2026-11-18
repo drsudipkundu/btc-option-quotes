@@ -17,6 +17,15 @@
    "t": 1794987529,
    "do": "fills",
    "args": []
+  },
+  {
+   "id": "2026-11-18-04",
+   "t": 1794987754,
+   "do": "install",
+   "args": [
+    "install_juice2_wingretry.sh"
+   ],
+   "note": "5 pc rule on net credit incl. hedge resale value; missing hedges retried every 5 minutes"
   }
  ]
 }
