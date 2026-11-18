@@ -35,6 +35,15 @@
     "install_richpaper.sh"
    ],
    "note": "PAPER ONLY: new paper copy V5A-CG-SL-P, trend leg x1.5 when premium is in the top 10 pc of its last 365 days; live seller untouched"
+  },
+  {
+   "id": "2026-11-18-06",
+   "t": 1795012070,
+   "do": "install",
+   "args": [
+    "install_flagpaper.sh"
+   ],
+   "note": "PAPER ONLY: two more paper copies - any flag x1.5, and any flag x1.5 with no-flag nights at half; live seller untouched"
   }
  ]
 }
