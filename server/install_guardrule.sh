@@ -1,5 +1,5 @@
 #!/bin/bash
-# 19-Nov-2026 (Sudip 14:17): live crash guard per side - fully hedged side: far option protects (guard 2 x ATR as before);
+# 19-Nov-2026 (Sudip 14:17, 16:42): live crash guard per side + far put price ceiling 30 %; - fully hedged side: far option protects (guard 2 x ATR as before);
 # side not fully hedged: guard fires when BTC touches the sold strike; capital formula takes the safer of hedged / unhedged.
 # Refuses 22:30-01:00 IST and while the live seller has an open leg. Needs install_livefl.sh (hedge rule) first.
 set -e

@@ -80,6 +80,15 @@
     "install_guardrule.sh"
    ],
    "note": "LIVE: crash guard at the sold strike while a side is NOT fully hedged (back to normal once the far option is bought); capital formula takes the safer figure"
+  },
+  {
+   "id": "2026-11-19-06",
+   "t": 1795086777,
+   "do": "install",
+   "args": [
+    "install_guardrule.sh"
+   ],
+   "note": "LIVE: crash guard at the sold strike while a side is NOT fully hedged (normal again once the far option is bought); far PUT price ceiling 30 pc (calls 50 pc); capital formula takes the safer figure"
   }
  ]
 }

@@ -3,6 +3,7 @@
  - side fully covered by its far options (hedge bought): guard stays at 2 x ATR (as before)
  - side NOT fully covered (no far option listed / bought only partly): guard fires when BTC touches the sold strike
    (or at 2 x ATR if that comes first); when the retry later completes the hedge, the guard goes back to 2 x ATR by itself.
+ - far PUT price ceiling 30 % of the sale price (calls stay 50 %), for the hedge buyer, the retry and the hedge-exists check.
  - capital formula (sizecalc): the safer of the hedged and unhedged figure (never below the floor).
 Paper copies are unchanged (flag only set by LiveNight). Backups .bak1119g. Every edit must match once or NOTHING is written."""
 import os, shutil
@@ -27,6 +28,11 @@ EDITS = {
  "nightlive.py": [
   ('        self.rich = False\n        self.flags = False\n        self.noflag_mult = 1.0\n',
    '        self.rich = False\n        self.flags = False\n        self.noflag_mult = 1.0\n        self.gk_unhedged = True               # 19-Nov-2026: guard at the sold strike while a side is not fully hedged\n'),
+  ('wing_max=0.5, wing_tries=3,', 'wing_max=0.5, wing_max_put=0.3, wing_tries=3,'),
+  ('                    top = P["wing_max"] * s["entry"]\n',
+   '                    top = (P.get("wing_max_put", 0.3) if s["side"] == "PE" else P["wing_max"]) * s["entry"]   # 19-Nov: puts 30 %\n'),
+  ('        top = float(self.cfg.get("wing_max", 0.5)) * bid\n',
+   '        top = float(self.cfg.get("wing_max_put", 0.3) if o["typ"] == "PE" else self.cfg.get("wing_max", 0.5)) * bid\n'),
  ],
  "sizecalc.py": [
   ('    if wing > 0:                                              # always-on hedge: loss is capped at the gap to the far option\n        cap = n * wing\n    else:\n        cap = n * max(0.0, (1 - dist) - (1 - S["ins_beyond"]) * (1 - trig))\n',

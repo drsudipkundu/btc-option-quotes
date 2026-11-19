@@ -176,6 +176,9 @@ try:
     src = open(os.path.join(os.path.dirname(os.path.abspath(LV.__file__)), "sizecalc.py")).read()
     assert "cap = max(n * wing, cap_g)" in src
     print("--- 5 capital formula takes the safer of hedged / unhedged")
+    lsrc = open(LV.__file__).read()
+    assert 'P.get("wing_max_put", 0.3) if s["side"] == "PE"' in lsrc and 'wing_max_put=0.3' in lsrc
+    print("--- 6 far put price ceiling 30 %% of the sale price, calls stay 50 %%")
     print("SELFTEST GUARD RULE PASSED")
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
