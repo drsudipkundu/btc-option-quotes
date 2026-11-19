@@ -62,6 +62,15 @@
    "t": 1795072539,
    "do": "status",
    "args": []
+  },
+  {
+   "id": "2026-11-19-04",
+   "t": 1795074595,
+   "do": "install",
+   "args": [
+    "install_livefl.sh"
+   ],
+   "note": "LIVE MONEY: size flags mode H (any flag x1.5, no flag x0.5) only when a far option is on offer; limits 5x/12x base; capital formula 5.5 units; retry log wording; one x1.5 message per night"
   }
  ]
 }
