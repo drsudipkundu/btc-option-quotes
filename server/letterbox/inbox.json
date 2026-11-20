@@ -1,16 +1,13 @@
 {
  "commands": [
   {
-   "id": "2026-11-20-01",
-   "t": 1795160739,
-   "do": "status",
-   "args": []
-  },
-  {
-   "id": "2026-11-20-02",
-   "t": 1795160739,
-   "do": "orders",
-   "args": []
+   "id": "2026-11-20-03",
+   "t": 1795162591,
+   "do": "install",
+   "args": [
+    "install_evening_20nov.sh"
+   ],
+   "note": "PAPER + RECORDERS + TOP-UP: paper copies K / G15 / HK; live recorders; sale at small base, extra up to big base once every far option is bought within 1 h"
   }
  ]
 }
