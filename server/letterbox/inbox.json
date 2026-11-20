@@ -1,13 +1,13 @@
 {
  "commands": [
   {
-   "id": "2026-11-20-06",
-   "t": 1795170151,
+   "id": "2026-11-20-07",
+   "t": 1795176745,
    "do": "install",
    "args": [
-    "install_sidewatch.sh"
+    "install_netpaper.sh"
    ],
-   "note": "RESEND of 05: read-only side recorder for parked put/call ideas + live night logs and option books to Drive. No trading restart"
+   "note": "PAPER safety net (no orders) + side recorder + live logs to Drive. No trading restart"
   }
  ]
 }

@@ -12,7 +12,7 @@ cd $H || exit 1
 for p in logs/shadow_nights.csv logs/shadow_nights_v5.csv logs/ladshadow_days.csv state/ladshadow_summary.json \
          logs/shadow state/shadow logs/ladshadow state/ladshadow logs/calls_ladder.csv logs/calls_lv10.csv logs/calls_lv11.csv logs/calls_lv12.csv \
          logs/nightlive_margin.csv logs/marginwatch_nights.csv logs/trades_night_nlive.csv logs/hedge_exists.csv logs/postfill_prices.csv \
-         logs/fillquality.csv logs/fillquality_buys.csv logs/sidewatch_nights.csv; do
+         logs/fillquality.csv logs/fillquality_buys.csv logs/sidewatch_nights.csv logs/netpaper_events.csv logs/netpaper_track.csv; do
   [ -e "$p" ] && { mkdir -p "$SNAP/$(dirname $p)"; cp -a "$p" "$SNAP/$p"; }
 done
 # 20-Nov-2026: live night evidence for the parked put/call sizing ideas (logs above) + finished option-book hours
