@@ -1,13 +1,13 @@
 {
  "commands": [
   {
-   "id": "2026-11-20-05",
-   "t": 1795167653,
+   "id": "2026-11-20-06",
+   "t": 1795170151,
    "do": "install",
    "args": [
     "install_sidewatch.sh"
    ],
-   "note": "Read-only side recorder for parked put/call ideas + live night logs and option books to Drive. No trading restart"
+   "note": "RESEND of 05: read-only side recorder for parked put/call ideas + live night logs and option books to Drive. No trading restart"
   }
  ]
 }
