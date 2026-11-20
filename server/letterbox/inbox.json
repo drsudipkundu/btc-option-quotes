@@ -1,13 +1,13 @@
 {
  "commands": [
   {
-   "id": "2026-11-20-03",
-   "t": 1795162591,
+   "id": "2026-11-20-04",
+   "t": 1795165201,
    "do": "install",
    "args": [
-    "install_evening_20nov.sh"
+    "install_tgplus.sh"
    ],
-   "note": "PAPER + RECORDERS + TOP-UP: paper copies K / G15 / HK; live recorders; sale at small base, extra up to big base once every far option is bought within 1 h"
+   "note": "Telegram: new commands /pnl /cum /tonight /guard /paper /server /ceiling. No trading restart"
   }
  ]
 }
