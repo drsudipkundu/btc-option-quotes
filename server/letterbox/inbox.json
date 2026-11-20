@@ -1,13 +1,13 @@
 {
  "commands": [
   {
-   "id": "2026-11-20-04",
-   "t": 1795165201,
+   "id": "2026-11-20-05",
+   "t": 1795167653,
    "do": "install",
    "args": [
-    "install_tgplus.sh"
+    "install_sidewatch.sh"
    ],
-   "note": "Telegram: new commands /pnl /cum /tonight /guard /paper /server /ceiling. No trading restart"
+   "note": "Read-only side recorder for parked put/call ideas + live night logs and option books to Drive. No trading restart"
   }
  ]
 }
