@@ -1,13 +1,9 @@
 {
  "commands": [
   {
-   "id": "2026-11-20-07",
-   "t": 1795176745,
-   "do": "install",
-   "args": [
-    "install_netpaper.sh"
-   ],
-   "note": "PAPER safety net (no orders) + side recorder + live logs to Drive. No trading restart"
+   "id": "2026-11-20-08",
+   "t": 1795197546,
+   "do": "status"
   }
  ]
 }
