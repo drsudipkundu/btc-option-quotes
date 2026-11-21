@@ -8,6 +8,15 @@
     "install_signal_logger.sh"
    ],
    "note": "Install the signal logger: saves BTC open interest, long/short ratio, funding, DVOL and Fear&Greed every hour, and every liquidation live, into logs/signal (copied to Drive daily). Read-only public data, no orders, no bot restarted."
+  },
+  {
+   "id": "2026-11-21-02",
+   "t": 1795237024,
+   "do": "install",
+   "args": [
+    "install_slope_shadow.sh"
+   ],
+   "note": "Install the v15 slope recorder: once a day (17:30 IST) it saves the SMA100 slope and what each shadow size rule would do, from Delta public prices only. No orders, no keys, no bot restarted, v15 untouched."
   }
  ]
 }
