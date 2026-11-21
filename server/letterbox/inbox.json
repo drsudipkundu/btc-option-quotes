@@ -1,9 +1,13 @@
 {
  "commands": [
   {
-   "id": "2026-11-20-08",
-   "t": 1795197546,
-   "do": "status"
+   "id": "2026-11-21-01",
+   "t": 1795225659,
+   "do": "install",
+   "args": [
+    "install_signal_logger.sh"
+   ],
+   "note": "Install the signal logger: saves BTC open interest, long/short ratio, funding, DVOL and Fear&Greed every hour, and every liquidation live, into logs/signal (copied to Drive daily). Read-only public data, no orders, no bot restarted."
   }
  ]
 }
