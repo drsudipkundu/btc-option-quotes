@@ -4,6 +4,15 @@
    "id": "2026-11-23-02",
    "t": 1795405184,
    "do": "status"
+  },
+  {
+   "id": "2026-11-23-03",
+   "t": 1795439527,
+   "do": "install",
+   "args": [
+    "install_transfer_test.sh"
+   ],
+   "note": "TRANSFER TEST (your request): checks first (read-only), then moves Rs 5,000 (USD 58.82) from serverbot to Ladderv9 with the main-account key, waits 30 minutes, moves it back, and tells you on Telegram at each step. Does nothing in the night window 22:30-23:50 IST or if serverbot has any open position. No orders, no bot restarted. Reply /install yes only if you want the money moved now."
   }
  ]
 }
