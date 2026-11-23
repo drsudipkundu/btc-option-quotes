@@ -1,11 +1,6 @@
 {
  "commands": [
   {
-   "id": "2026-11-23-c11",
-   "t": 1795440863,
-   "do": "status"
-  },
-  {
    "id": "2026-11-23-04",
    "t": 1795441200,
    "do": "install",
@@ -20,6 +15,15 @@
    "args": [
     "install_sweep_report.sh"
    ]
+  },
+  {
+   "id": "2026-11-23-c12",
+   "t": 1795444394,
+   "do": "install",
+   "args": [
+    "install_autosize_direct.sh"
+   ],
+   "note": "Night base straight to what the balance allows (no +0.01 per week step). No restart"
   }
  ]
 }
