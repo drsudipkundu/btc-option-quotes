@@ -12,6 +12,14 @@
    "args": [
     "install_sweep_report.sh"
    ]
+  },
+  {
+   "id": "2026-11-23-05",
+   "t": 1795445000,
+   "do": "install",
+   "args": [
+    "install_sweep_report.sh"
+   ]
   }
  ]
 }

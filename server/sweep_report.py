@@ -247,6 +247,31 @@ def message(c, d):
     ])
 
 
+def detail(c, d):
+    """Long version for the e-mail: every number and setting, so the whole picture is readable without a PC."""
+    L = [message(c, d), "", "---- DETAILS ----",
+         "Settings used: fx Rs %.0f per USD; step Rs %.0f; floors Ladderv9 %s, serverbot %s; daily cap %s; fall %.0f%%; rise stop = strike x %.2f." % (
+             c["fx"], c["step_inr"], lakh(c["ladder_floor_inr"]), lakh(c["server_floor_inr"]), lakh(c["cap_inr"]), c["fall_pct"], c["rise_stop_mult"]),
+         "Fall test: price %.0f -> %.0f. Held now %.4f BTC, held at the bottom %.4f BTC (%d extra lots of %.3f BTC, brake %.2f BTC)." % (
+             d["spot"], d["Pst"], d["H0"], d["hold_stress"], d["nlots"], c["lot_btc"], c["brake_btc"]),
+         "Fall test need %s = margin (ladder ratio %.2f, call ratio %.2f) + loss on the way down." % (lakh(d["need_fall_inr"]), d["r_fut"], c["call_ratio"]),
+         "Rise test need %s at price %.0f (ladder and call margin + call loss; ladder gain and premium ignored)." % (lakh(d["need_rise_inr"]), d["Pup"]),
+         "Serverbot: equity %s, spare above floor %s, %s." % (lakh(d["s_eq"]), lakh(max(d["s_spare"], 0)), "flat" if d["s_flat"] else "not flat"),
+         "Last buy / call basis: %s; %s." % (d["lb_note"], d["call_note"]),
+         "REPORT ONLY: no money was moved and no order was placed."]
+    return "\n".join(L)
+
+
+def email(subject, body):
+    try:
+        import bot
+        bot.Notifier()._send_now(subject, body)
+        return True
+    except Exception as e:
+        print("email failed:", type(e).__name__, str(e)[:100])
+        return False
+
+
 def main():
     show = "--show" in sys.argv
     c = load_cfg()
@@ -257,7 +282,7 @@ def main():
         t = "SWEEP REPORT failed: %s: %s. Nothing moved." % (type(e).__name__, str(e)[:200])
         print(t)
         if not show:
-            tg(t)
+            tg(t); email("[DeltaBot] Sweep report FAILED", t)
         return
     msg = message(c, d)
     print(msg)
@@ -272,6 +297,7 @@ def main():
         w.writerow([dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), round(d["spot"], 1), round(d["H0"], 4), round(d["eq_inr"]),
                     round(d["need_fall_inr"]), round(d["need_rise_inr"]), round(d["need_inr"]), round(d["diff"]), round(d["s_eq"]), round(d["move"]), d["why"]])
     tg(msg)
+    email("[DeltaBot] Sweep report %s" % dt.datetime.now().strftime("%d-%b"), detail(c, d))
 
 
 if __name__ == "__main__":
