@@ -1,22 +1,6 @@
 {
  "commands": [
   {
-   "id": "2026-11-23-04",
-   "t": 1795441200,
-   "do": "install",
-   "args": [
-    "install_sweep_report.sh"
-   ]
-  },
-  {
-   "id": "2026-11-23-05",
-   "t": 1795445000,
-   "do": "install",
-   "args": [
-    "install_sweep_report.sh"
-   ]
-  },
-  {
    "id": "2026-11-23-c12",
    "t": 1795444394,
    "do": "install",
@@ -24,6 +8,14 @@
     "install_autosize_direct.sh"
    ],
    "note": "Night base straight to what the balance allows (no +0.01 per week step). No restart"
+  },
+  {
+   "id": "2026-11-23-06",
+   "t": 1795444410,
+   "do": "install",
+   "args": [
+    "install_sweep_report.sh"
+   ]
   }
  ]
 }
