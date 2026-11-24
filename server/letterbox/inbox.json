@@ -1,59 +1,6 @@
 {
  "commands": [
   {
-   "id": "2026-11-23-c12",
-   "t": 1795444394,
-   "do": "install",
-   "args": [
-    "install_autosize_direct.sh"
-   ],
-   "note": "Night base straight to what the balance allows (no +0.01 per week step). No restart"
-  },
-  {
-   "id": "2026-11-23-06",
-   "t": 1795444410,
-   "do": "install",
-   "args": [
-    "install_sweep_report.sh"
-   ]
-  },
-  {
-   "id": "2026-11-24-c01",
-   "t": 1795509001,
-   "do": "install",
-   "args": [
-    "install_autosize_direct.sh"
-   ],
-   "note": "Night base straight to what the balance allows (no +0.01 per week step). No restart"
-  },
-  {
-   "id": "2026-11-24-c02",
-   "t": 1795509002,
-   "do": "install",
-   "args": [
-    "install_sweep_report2.sh"
-   ],
-   "note": "Sweep report v2: multiple of safe step + cushion + pocket. REPORT ONLY, no money moves"
-  },
-  {
-   "id": "2026-11-24-c03",
-   "t": 1795509003,
-   "do": "install",
-   "args": [
-    "install_refusefix.sh"
-   ],
-   "note": "A strike Delta refuses = failed try, bot moves to the next strike. Restarts nightlive"
-  },
-  {
-   "id": "2026-11-24-c04",
-   "t": 1795509004,
-   "do": "install",
-   "args": [
-    "install_topupside.sh"
-   ],
-   "note": "Top-up to the big base decided side by side (put / call). Restarts nightlive"
-  },
-  {
    "id": "2026-11-24-c05",
    "t": 1795509005,
    "do": "install",
@@ -61,6 +8,15 @@
     "install_ceiling40.sh"
    ],
    "note": "Automatic-base ceiling 0.30 -> 0.40 BTC"
+  },
+  {
+   "id": "2026-11-24-c06",
+   "t": 1795509617,
+   "do": "install",
+   "args": [
+    "install_batch1124.sh"
+   ],
+   "note": "ONE yes for 4 updates: autosize direct raise, sweep report v2 (report only), refused strike -> next strike, top-up side by side"
   }
  ]
 }
