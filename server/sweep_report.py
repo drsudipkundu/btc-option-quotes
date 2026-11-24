@@ -17,6 +17,15 @@ What it works out (all in plain numbers, Rs lakh at Rs 85 per USD):
  6. Decision as it WOULD be: move only if the difference is at least one step (0.01 night base = Rs 41,900), at most the daily cap
     (Rs 1 L at the start), never below the floors, only when serverbot is flat; if serverbot cannot cover a shortfall it only alerts.
 
+Version 2 (24-Nov-2026, Sudip's agreed upgrade, STILL REPORT ONLY): the step is no longer a fixed Rs figure - it is the live safe balance per
+0.01 base (sizecalc, moves with BTC). After the Ladderv9 <-> serverbot check it also reports the serverbot MULTIPLE check:
+ 7. Serverbot balance in steps (e.g. 16.7). A whole multiple plus a small cushion (default 4% of a step) keeps the base from being cut by a
+    tiny BTC move. If the part above the whole number is >= 0.5 it reports a TOP-UP from the main-account pocket to the next multiple + cushion;
+    if it is <= 0.4 (dead band 0.1 against flip-flop) the leftover above multiple + cushion goes BACK to the pocket; in between nothing moves.
+ 8. Pocket = main-account balance. Floor Rs 5,000 (nothing goes to serverbot below it), target about Rs 25,000 (leftovers refill it, never above).
+    No move smaller than 0.1 step; daily cap and 'serverbot flat only' as before. Nothing here is hard-coded to a rupee step.
+Only the pocket floor and pocket target are Sudip's own settings. THIS FILE CONTAINS NO TRANSFER CALL: it cannot move money.
+
   venv/bin/python sweep_report.py            run, log to logs/sweep_report.csv, Telegram message
   venv/bin/python sweep_report.py --show     run and only print (no Telegram, no log)
 Settings can be changed in state/sweep_cfg.json (only the keys you list change). Server time is IST."""
@@ -35,6 +44,8 @@ CFG = dict(
     entry=84429.5, gap_pct=0.75, gap3_pct=2.0, gap4_pct=4.0, gap5_pct=7.0,
     z2_anchor=62076.5, z2_lo_pct=60.32, z3_lo_pct=47.09, z4_lo_pct=33.86,
     since="2026-10-21",
+    cushion_frac=0.04, topup_frac=0.5, deadband=0.1, min_move_frac=0.1,
+    pocket_floor_inr=5000.0, pocket_target_inr=30000.0,
 )
 
 
@@ -74,6 +85,53 @@ def tg(text):
         urllib.request.urlopen("https://api.telegram.org/bot%s/sendMessage" % tok, data, timeout=15).read()
     except Exception as e:
         print("telegram send failed:", type(e).__name__)
+
+
+# ------------------------------------------------------------------ serverbot multiple + main-account pocket (pure, testable)
+def pocket_plan(eq_inr, step_inr, pocket_inr, c, s_flat=True, daily_left_inr=None):
+    """eq_inr = serverbot balance (after any Ladderv9 sweep move), step_inr = live safe balance per 0.01 base in Rs.
+    Returns dict(n, whole, frac, move_inr (+ pocket -> serverbot, - serverbot -> pocket), why, base_now, base_after)."""
+    step = max(step_inr, 1.0)
+    n = eq_inr / step
+    whole = math.floor(n + 1e-9)
+    frac = n - whole
+    cush, hi = c["cushion_frac"], c["topup_frac"]
+    lo = hi - c["deadband"]
+    minmv = c["min_move_frac"] * step
+    cap = c["cap_inr"] if daily_left_inr is None else daily_left_inr
+    out = dict(n=n, whole=whole, frac=frac, move_inr=0.0, base_now=whole / 100.0, base_after=whole / 100.0, why="")
+    avail = max(pocket_inr - c["pocket_floor_inr"], 0.0)
+    if not s_flat:
+        out["why"] = "serverbot is not flat: no pocket move today"
+        return out
+    if frac >= hi - 1e-9:                                   # TOP-UP to the next multiple + cushion
+        need = (whole + 1 + cush) * step - eq_inr
+        if need < minmv:
+            out["why"] = "top-up needed Rs %.0f is below the minimum move (0.1 step)" % need
+        elif need > cap:
+            out["why"] = "top-up needed Rs %.0f is above the daily cap Rs %.0f: no move" % (need, cap)
+        elif need > avail:
+            out["why"] = "TOP-UP needed Rs %.0f but the pocket has only Rs %.0f above its floor (Rs %.0f): no move - add money to the main account" % (
+                need, avail, c["pocket_floor_inr"])
+        else:
+            out["move_inr"] = need; out["base_after"] = (whole + 1) / 100.0
+            out["why"] = "fraction %.2f >= %.2f: top up Rs %.0f from the pocket to reach %d steps + cushion" % (frac, hi, need, whole + 1)
+    elif frac <= lo + 1e-9:                                 # PULL BACK the leftover above multiple + cushion
+        left = eq_inr - (whole + cush) * step
+        room = max(c["pocket_target_inr"] - pocket_inr, 0.0)
+        mv = min(left, room, cap)
+        if left < minmv:
+            out["why"] = "fraction %.2f: leftover above multiple + cushion Rs %.0f is below the minimum move" % (frac, max(left, 0))
+        elif room < minmv:
+            out["why"] = "fraction %.2f: leftover Rs %.0f stays in serverbot (pocket already at its target Rs %.0f)" % (frac, left, c["pocket_target_inr"])
+        else:
+            out["move_inr"] = -mv
+            out["why"] = "fraction %.2f <= %.2f: leftover Rs %.0f above %d steps + cushion goes back to the pocket (Rs %.0f)" % (frac, lo, left, whole, mv)
+    else:
+        out["why"] = "fraction %.2f is inside the dead band (%.2f to %.2f): no move" % (frac, lo, hi)
+    if not out["move_inr"] and 0 <= frac < cush and not out["why"].startswith("serverbot"):
+        out["why"] += "; note: only %.0f%% of a step above %d steps - a small BTC rise could cut the base by 0.01" % (frac * 100, whole)
+    return out
 
 
 # ------------------------------------------------------------------ grid of ladder buy levels (v9 spec)
@@ -147,6 +205,7 @@ def parse_strike(sym):
 
 # ------------------------------------------------------------------ main calculation
 def compute(c, Live, Pub):  # tk below is the public BTCUSD ticker
+    c = dict(c)
     pub = Pub()
     tk = pub._http("GET", "/v2/tickers/BTCUSD")["result"]
     spot = f(tk.get("spot_price")) or f(tk.get("mark_price"))
@@ -202,6 +261,13 @@ def compute(c, Live, Pub):  # tk below is the public BTCUSD ticker
     s_flat = not S["pos"] and not S["orders"]
     s_spare = s_eq - c["server_floor_inr"]
 
+    step_src = "fixed setting"
+    try:                                                    # the step follows BTC: live safe balance per 0.01 base (sizecalc)
+        import sizecalc as SC
+        safe_usd = SC.safe_balance(spot, SC.tonight_ind(), SC.settings())["safe"]
+        c["step_inr"] = safe_usd * c["fx"]; step_src = "live safe balance per 0.01 (moves with BTC)"
+    except Exception as e:
+        step_src = "fixed setting (live safe balance not read: %s)" % type(e).__name__
     step, cap = c["step_inr"], c["cap_inr"]
     move, why = 0.0, ""
     if diff >= step:
@@ -226,10 +292,38 @@ def compute(c, Live, Pub):  # tk below is the public BTCUSD ticker
     else:
         why = "difference %s is below one step (%s): no move" % (lakh(diff), lakh(step))
 
-    d = dict(spot=spot, H0=H0, r_fut=r_fut, last_buy=last_buy, lb_note=lb_note, call_note=call_note, Pst=Pst, nlots=nlots,
+    # ---- serverbot multiple + main-account pocket (report only)
+    pocket_inr, pocket_err = None, ""
+    try:
+        mcl = Live("main")
+        row = [b for b in (mcl._p("GET", "/v2/wallet/balances")["result"] or []) if b.get("asset_symbol") == "USD"]
+        pocket_inr = f(row[0].get("balance")) * c["fx"] if row else 0.0
+    except Exception as e:
+        pocket_err = type(e).__name__
+    eq_after = s_eq + move                                   # serverbot balance after the Ladderv9 sweep move above (if it were made)
+    if pocket_inr is None:
+        pk = dict(n=eq_after / step, whole=math.floor(eq_after / step), frac=0, move_inr=0.0, base_now=0, base_after=0,
+                  why="main-account balance not readable (%s): pocket not checked" % pocket_err)
+    else:
+        pk = pocket_plan(eq_after, step, pocket_inr, c, s_flat, None)   # pocket moves are the main account's own money: own cap, not shared with the Ladderv9 sweep
+    d = dict(c=c, step_src=step_src, pocket_inr=pocket_inr, eq_after=eq_after, pk=pk, spot=spot, H0=H0, r_fut=r_fut, last_buy=last_buy, lb_note=lb_note, call_note=call_note, Pst=Pst, nlots=nlots,
              hold_stress=hold, need_fall_inr=need_fall * c["fx"], Pup=Pup, need_rise_inr=need_rise * c["fx"], need_inr=need_inr,
              eq_inr=eq_inr, diff=diff, s_eq=s_eq, s_flat=s_flat, s_spare=s_spare, move=move, why=why)
     return d
+
+
+def pocket_lines(d):
+    c, pk = d["c"], d["pk"]
+    pm = pk["move_inr"]
+    ptxt = "nothing" if not pm else ("Rs %.0f from the main-account pocket to serverbot" % pm if pm > 0 else "Rs %.0f from serverbot back to the pocket" % -pm)
+    need_worst = (1 + c["cushion_frac"] - c["topup_frac"]) * c["step_inr"]
+    pocket = "not read" if d["pocket_inr"] is None else "Rs %.0f" % d["pocket_inr"]
+    return ["SERVERBOT MULTIPLE: balance %s after the sweep = %.2f steps of Rs %.0f (step %s). Base it allows now %.2f." % (
+                lakh(d["eq_after"]), pk["n"], c["step_inr"], d["step_src"], pk["base_now"]),
+            "POCKET (main account) %s, floor Rs %.0f, target Rs %.0f." % (pocket, c["pocket_floor_inr"], c["pocket_target_inr"]),
+            "POCKET WOULD MOVE: %s -> base would be %.2f. Reason: %s." % (ptxt, pk["base_after"], pk["why"])] + (
+            ["WARNING: the worst top-up (balance just at %.1f steps) needs Rs %.0f, so the pocket target should be at least Rs %.0f (now Rs %.0f)." % (
+                c["topup_frac"], need_worst, c["pocket_floor_inr"] + need_worst, c["pocket_target_inr"])] if need_worst > c["pocket_target_inr"] - c["pocket_floor_inr"] else [])
 
 
 def message(c, d):
@@ -244,7 +338,7 @@ def message(c, d):
         "Ladder requirement (worse of both, floor %s): %s. Difference: %s." % (lakh(c["ladder_floor_inr"]), lakh(d["need_inr"]), ("+" if d["diff"] >= 0 else "-") + lakh(abs(d["diff"]))),
         "WOULD MOVE: %s. Reason: %s." % (mtxt, d["why"]),
         "Basis: %s." % d["lb_note"],
-    ])
+    ] + pocket_lines(d))
 
 
 def detail(c, d):
@@ -258,6 +352,8 @@ def detail(c, d):
          "Rise test need %s at price %.0f (ladder and call margin + call loss; ladder gain and premium ignored)." % (lakh(d["need_rise_inr"]), d["Pup"]),
          "Serverbot: equity %s, spare above floor %s, %s." % (lakh(d["s_eq"]), lakh(max(d["s_spare"], 0)), "flat" if d["s_flat"] else "not flat"),
          "Last buy / call basis: %s; %s." % (d["lb_note"], d["call_note"]),
+         "Multiple rules: cushion %.0f%% of a step; top up when the part above the whole number is >= %.2f; pull back when <= %.2f (dead band %.2f); minimum move %.2f step; pocket floor Rs %.0f, target Rs %.0f." % (
+             c["cushion_frac"] * 100, c["topup_frac"], c["topup_frac"] - c["deadband"], c["deadband"], c["min_move_frac"], c["pocket_floor_inr"], c["pocket_target_inr"]),
          "REPORT ONLY: no money was moved and no order was placed."]
     return "\n".join(L)
 
@@ -284,18 +380,22 @@ def main():
         if not show:
             tg(t); email("[DeltaBot] Sweep report FAILED", t)
         return
+    c = d["c"]
     msg = message(c, d)
     print(msg)
     if show:
         return
     os.makedirs(LOGS, exist_ok=True)
-    p = os.path.join(LOGS, "sweep_report.csv"); new = not os.path.exists(p)
+    p = os.path.join(LOGS, "sweep_report2.csv"); new = not os.path.exists(p)
     with open(p, "a", newline="") as fh:
         w = csv.writer(fh)
         if new:
-            w.writerow(["time_ist", "spot", "held_btc", "ladder_eq_inr", "need_fall_inr", "need_rise_inr", "need_inr", "diff_inr", "server_eq_inr", "would_move_inr", "why"])
+            w.writerow(["time_ist", "spot", "held_btc", "ladder_eq_inr", "need_fall_inr", "need_rise_inr", "need_inr", "diff_inr", "server_eq_inr", "would_move_inr", "why",
+                        "step_inr", "steps", "pocket_inr", "pocket_would_move_inr", "pocket_why"])
         w.writerow([dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), round(d["spot"], 1), round(d["H0"], 4), round(d["eq_inr"]),
-                    round(d["need_fall_inr"]), round(d["need_rise_inr"]), round(d["need_inr"]), round(d["diff"]), round(d["s_eq"]), round(d["move"]), d["why"]])
+                    round(d["need_fall_inr"]), round(d["need_rise_inr"]), round(d["need_inr"]), round(d["diff"]), round(d["s_eq"]), round(d["move"]), d["why"],
+                    round(c["step_inr"]), round(d["pk"]["n"], 3), "" if d["pocket_inr"] is None else round(d["pocket_inr"]),
+                    round(d["pk"]["move_inr"]), d["pk"]["why"]])
     tg(msg)
     email("[DeltaBot] Sweep report %s" % dt.datetime.now().strftime("%d-%b"), detail(c, d))
 
