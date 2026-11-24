@@ -17,6 +17,15 @@
     "install_batch1124.sh"
    ],
    "note": "ONE yes for 4 updates: autosize direct raise, sweep report v2 (report only), refused strike -> next strike, top-up side by side"
+  },
+  {
+   "id": "2026-11-24-c07",
+   "t": 1795509634,
+   "do": "install",
+   "args": [
+    "install_batch1124.sh"
+   ],
+   "note": "ONE yes for 4 updates: autosize direct raise, sweep report v2 (report only), refused strike -> next strike, top-up side by side"
   }
  ]
 }

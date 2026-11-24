@@ -7,10 +7,11 @@ FAIL=0
 for s in install_autosize_direct.sh install_sweep_report2.sh install_refusefix.sh install_topupside.sh; do
   echo "=== $s"
   if curl -fsSL https://raw.githubusercontent.com/drsudipkundu/btc-option-quotes/$REF/server/$s -o state/batch_$s; then
-    if bash state/batch_$s $REF 2>&1 | tail -n 8; then :; fi
-    [ "${PIPESTATUS[0]}" = "0" ] && echo "RESULT $s: OK" || { echo "RESULT $s: FAILED"; FAIL=1; }
+    OUT=$(bash state/batch_$s $REF 2>&1); RC=$?
+    echo "$OUT" | tail -n 8
+    if [ "$RC" = "0" ]; then echo "RESULT $s: OK"; else echo "RESULT $s: FAILED"; FAIL=1; fi
   else echo "RESULT $s: could not download"; FAIL=1; fi
 done
-echo "=== summary"; grep -h "" /dev/null
+echo "=== summary"
 [ "$FAIL" = "0" ] && echo "BATCH 24-NOV DONE: all four installed" || echo "BATCH 24-NOV: at least one FAILED - see above"
 exit $FAIL
