@@ -186,7 +186,10 @@ try:
     put = [s for s in b["sold"] if s[0].startswith("P")][0]
     width = 0.04 * 82000 + 200
     assert b["pnl"] > -(width * put[1]) - 80, "hedged loss must be capped near strike gap x size (plus the pretend 5 % buy-back spread)"
-    assert c["pnl"] < b["pnl"] - 100, "unhedged crash must lose far more"
+    # 24-Nov-2026: since 19-Nov an unhedged sale has the crash guard AT THE SOLD STRIKE, which buys insurance about as far out as the
+    # hedge would be. So the unhedged crash no longer "loses far more": both losses are capped near strike gap x size.
+    assert c["pnl"] > -(width * put[1]) - 120, "unhedged loss must also be capped (crash guard at the sold strike)"
+    assert abs(c["pnl"] - b["pnl"]) < 100, "hedged and guard-at-strike crash losses should be close: %.0f vs %.0f" % (b["pnl"], c["pnl"])
     print("   => crash night: hedged %.2f USD against unhedged %.2f USD (cap = strike gap %.0f x %.2f BTC = %.0f USD less premium)" % (
         b["pnl"], c["pnl"], width, put[1], width * put[1]))
 
