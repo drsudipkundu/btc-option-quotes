@@ -62,6 +62,15 @@
     "install_takeprofit.sh"
    ],
    "note": "Telegram /takeprofit x: close the night at x% of premium earned (this night only; 'always' = standing; 0 = now; off) (c13)"
+  },
+  {
+   "id": "2026-11-25-c14",
+   "t": 1795591440,
+   "do": "install",
+   "args": [
+    "install_caution.sh"
+   ],
+   "note": "Telegram /caution on|off: flexible exit for ONE news night only, self-clearing (c14). Needs c13 installed."
   }
  ]
 }
