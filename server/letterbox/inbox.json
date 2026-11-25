@@ -17,6 +17,15 @@
     "install_remind.sh"
    ],
    "note": "22:30 and 23:10 IST reminder when night sales are not running (no position open now)"
+  },
+  {
+   "id": "2026-11-25-c09",
+   "t": 1795584111,
+   "do": "install",
+   "args": [
+    "install_mailcode.sh"
+   ],
+   "note": "mail code update (c09), no position open"
   }
  ]
 }
