@@ -35,6 +35,15 @@
     "install_hedgeorder.sh"
    ],
    "note": "hedge order: in/out switch then future last resort (c10), no position open"
+  },
+  {
+   "id": "2026-11-25-c11",
+   "t": 1795584655,
+   "do": "install",
+   "args": [
+    "install_strikelog.sh"
+   ],
+   "note": "strike-list logger, own service, public data only, bot untouched (c11)"
   }
  ]
 }
