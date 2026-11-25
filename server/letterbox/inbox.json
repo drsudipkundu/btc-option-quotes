@@ -44,6 +44,15 @@
     "install_strikelog.sh"
    ],
    "note": "strike-list logger, own service, public data only, bot untouched (c11)"
+  },
+  {
+   "id": "2026-11-25-c12",
+   "t": 1795590516,
+   "do": "install",
+   "args": [
+    "install_retrylimit.sh"
+   ],
+   "note": "retry hedge limit by time (30/40/50/60/75% of sold option price now) + 25% buy-back of a decayed sold option (c12); retry only, sale-time hedge unchanged"
   }
  ]
 }
