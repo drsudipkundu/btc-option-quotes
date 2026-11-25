@@ -46,6 +46,7 @@ CFG = dict(
     since="2026-10-21",
     cushion_frac=0.04, topup_frac=0.5, deadband=0.1, min_move_frac=0.1,
     pocket_floor_inr=5000.0, pocket_target_inr=30000.0,
+    ladder_max_inr=1_000_000.0,   # ladder max capital (Sudip 25-Nov): most it can ever block with BTC down to 0; reference line only for now
     calls_on=True,   # set false in state/sweep_cfg.json once the v9 calls are stopped: no call margin, no rise test
 )
 
@@ -251,6 +252,17 @@ def compute(c, Live, Pub):  # tk below is the public BTCUSD ticker
     margin_fall = r_fut * hold * Pst + c["call_ratio"] * call_btc * Pst
     need_fall = margin_fall + loss
 
+    # reference: BTC down to about 0 (ladder buys every remaining level up to the brake)
+    P0 = max(spot * 0.001, 1.0)
+    hold0 = H0; loss0 = H0 * (spot - P0)
+    for lvl in grid_levels(c):
+        if lvl >= last_buy or lvl < P0:
+            continue
+        if hold0 + c["lot_btc"] > c["brake_btc"] + 1e-9:
+            break
+        hold0 += c["lot_btc"]; loss0 += c["lot_btc"] * (lvl - P0)
+    need_zero = r_fut * hold0 * P0 + c["call_ratio"] * call_btc * P0 + loss0
+
     # RISE test
     if K > 0:
         Pup = K * c["rise_stop_mult"]
@@ -315,7 +327,7 @@ def compute(c, Live, Pub):  # tk below is the public BTCUSD ticker
     else:
         pk = pocket_plan(eq_after, step, pocket_inr, c, s_flat, None)   # pocket moves are the main account's own money: own cap, not shared with the Ladderv9 sweep
     d = dict(c=c, step_src=step_src, pocket_inr=pocket_inr, eq_after=eq_after, pk=pk, spot=spot, H0=H0, r_fut=r_fut, last_buy=last_buy, lb_note=lb_note, call_note=call_note, Pst=Pst, nlots=nlots,
-             hold_stress=hold, need_fall_inr=need_fall * c["fx"], Pup=Pup, need_rise_inr=need_rise * c["fx"], need_inr=need_inr,
+             hold_stress=hold, need_zero_inr=need_zero * c["fx"], hold_zero=hold0, need_fall_inr=need_fall * c["fx"], Pup=Pup, need_rise_inr=need_rise * c["fx"], need_inr=need_inr,
              eq_inr=eq_inr, diff=diff, s_eq=s_eq, s_flat=s_flat, s_spare=s_spare, move=move, why=why)
     return d
 
@@ -343,6 +355,8 @@ def message(c, d):
         "Ladderv9 equity %s. Serverbot equity %s (%s)." % (lakh(d["eq_inr"]), lakh(d["s_eq"]), "flat" if d["s_flat"] else "NOT flat"),
         "FALL %d%% to %.0f: ladder holds %.3f BTC (+%d lots), needs %s." % (c["fall_pct"], d["Pst"], d["hold_stress"], d["nlots"], lakh(d["need_fall_inr"])),
         "RISE to call stop %.0f: needs %s." % (d["Pup"], lakh(d["need_rise_inr"])),
+        "BTC to 0: ladder would hold %.3f BTC and needs %s. Ladder max capital %s (%s)." % (d["hold_zero"], lakh(d["need_zero_inr"]), lakh(c["ladder_max_inr"]),
+            "enough" if d["need_zero_inr"] <= c["ladder_max_inr"] else "ALERT: BTC-to-0 need is above the max"),
         "Ladder requirement (worse of both, floor %s): %s. Difference: %s." % (lakh(c["ladder_floor_inr"]), lakh(d["need_inr"]), ("+" if d["diff"] >= 0 else "-") + lakh(abs(d["diff"]))),
         "WOULD MOVE: %s. Reason: %s." % (mtxt, d["why"]),
         "Basis: %s." % d["lb_note"],

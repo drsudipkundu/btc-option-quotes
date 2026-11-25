@@ -88,6 +88,7 @@ class Live3(Live2):          # same account after the call has expired: no call 
 d_open = SR.compute(dict(C, fall_pct=99.9, calls_on=False), Live2, Pub2)
 d_off = SR.compute(dict(C, fall_pct=99.9, calls_on=False, ladder_floor_inr=830000.0), Live3, Pub2)
 check("calls off but a call still open: still tested (safe)", d_open["need_rise_inr"] > 0)
+check("report shows BTC-to-0 need and ladder max", "BTC to 0" in SR.message(d_on["c"], d_on) and d_on["need_zero_inr"] > 0)
 check("calls on: rise test and call margin counted", d_on["need_rise_inr"] > 0)
 check("calls off: no rise test, lower requirement", d_off["need_rise_inr"] == 0 and d_off["need_inr"] <= d_on["need_inr"], (d_on["need_inr"], d_off["need_inr"]))
 check("calls off but call open: warning shown", "WARNING open call" in SR.detail(d_open["c"], d_open) or "WARNING open call" in SR.message(d_open["c"], d_open))
