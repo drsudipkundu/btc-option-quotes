@@ -46,6 +46,7 @@ CFG = dict(
     since="2026-10-21",
     cushion_frac=0.04, topup_frac=0.5, deadband=0.1, min_move_frac=0.1,
     pocket_floor_inr=5000.0, pocket_target_inr=30000.0,
+    calls_on=True,   # set false in state/sweep_cfg.json once the v9 calls are stopped: no call margin, no rise test
 )
 
 
@@ -220,7 +221,11 @@ def compute(c, Live, Pub):  # tk below is the public BTCUSD ticker
     call_btc = sum(abs(f(p.get("size"))) for p in calls) / CPB
     K = max([parse_strike(p["product_symbol"]) for p in calls] or [0.0])
     call_note = "open call %.3f BTC, strike %.0f" % (call_btc, K) if calls else "no call open; covered call (up to the held BTC) reserved"
-    if not calls:
+    if not c.get("calls_on", True):
+        call_note = "CALLS OFF (no call margin reserved, no rise test)" + ("; WARNING open call %.3f BTC still found" % call_btc if calls else "")
+        if not calls:
+            call_btc, K = 0.0, 0.0
+    elif not calls:
         call_btc, K = H0, spot * 1.05
 
     # last buy
@@ -247,10 +252,13 @@ def compute(c, Live, Pub):  # tk below is the public BTCUSD ticker
     need_fall = margin_fall + loss
 
     # RISE test
-    Pup = K * c["rise_stop_mult"]
-    loss_up = call_btc * max(0.0, Pup - K)
-    margin_up = r_fut * H0 * Pup + c["call_ratio"] * call_btc * Pup
-    need_rise = margin_up + loss_up
+    if K > 0:
+        Pup = K * c["rise_stop_mult"]
+        loss_up = call_btc * max(0.0, Pup - K)
+        margin_up = r_fut * H0 * Pup + c["call_ratio"] * call_btc * Pup
+        need_rise = margin_up + loss_up
+    else:   # calls off: nothing short above the market, ladder only gains on a rise
+        Pup = spot; need_rise = 0.0
 
     need_usd = max(need_fall, need_rise) * c["buffer"]
     need_inr = max(need_usd * c["fx"], c["ladder_floor_inr"])

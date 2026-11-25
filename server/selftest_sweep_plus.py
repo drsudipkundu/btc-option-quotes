@@ -64,6 +64,33 @@ print("\n".join("    | " + l for l in msg.splitlines()))
 check("report has multiple + pocket lines", "SERVERBOT MULTIPLE" in msg and "POCKET WOULD MOVE" in msg and "POCKET (main account)" in msg)
 check("small pocket target gets a warning", "WARNING" in SR.message(dict(d["c"], pocket_target_inr=20000), dict(d, c=dict(d["c"], pocket_target_inr=20000))))
 check("details list the multiple rules", "Multiple rules" in det and "REPORT ONLY" in det)
+print("calls OFF switch (25-Nov-2026)")
+class Live2(Live):
+    def _p(self, m, path, params=None, body=None):
+        assert m == "GET"
+        if "positions/margined" in path and self.name == "ladder9":
+            return {"result": [{"product_symbol": "BTCUSD", "size": "110", "margin": "2300"},
+                               {"product_symbol": "C-BTC-63400-261126", "size": "-288", "margin": "0"}]}
+        if "/v2/fills" in path:
+            return {"result": [], "meta": {}}
+        if "wallet/balances" in path and self.name == "ladder9":
+            usd = 14.39e5 / 85
+            return {"result": [{"asset_symbol": "USD", "balance": str(usd), "available_balance": str(usd - 5000), "blocked_margin": "5000"}]}
+        return Live._p(self, m, path, params, body)
+Pub2 = Pub
+d_on = SR.compute(dict(C, fall_pct=99.9), Live2, Pub2)
+class Live3(Live2):          # same account after the call has expired: no call open
+    def _p(self, m, path, params=None, body=None):
+        r = Live2._p(self, m, path, params, body)
+        if "positions/margined" in path and self.name == "ladder9":
+            r = {"result": [x for x in r["result"] if x["product_symbol"] == "BTCUSD"]}
+        return r
+d_open = SR.compute(dict(C, fall_pct=99.9, calls_on=False), Live2, Pub2)
+d_off = SR.compute(dict(C, fall_pct=99.9, calls_on=False, ladder_floor_inr=830000.0), Live3, Pub2)
+check("calls off but a call still open: still tested (safe)", d_open["need_rise_inr"] > 0)
+check("calls on: rise test and call margin counted", d_on["need_rise_inr"] > 0)
+check("calls off: no rise test, lower requirement", d_off["need_rise_inr"] == 0 and d_off["need_inr"] <= d_on["need_inr"], (d_on["need_inr"], d_off["need_inr"]))
+check("calls off but call open: warning shown", "WARNING open call" in SR.detail(d_open["c"], d_open) or "WARNING open call" in SR.message(d_open["c"], d_open))
 src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "sweep_report.py")).read()
 check("file has no transfer call", "sub_account_balance_transfer" not in src and '"POST"' not in src and "'POST'" not in src)
 print("\n%d ok, %d failed" % (ok, bad))
