@@ -53,6 +53,15 @@
     "install_retrylimit.sh"
    ],
    "note": "retry hedge limit by time (30/40/50/60/75% of sold option price now) + 25% buy-back of a decayed sold option (c12); retry only, sale-time hedge unchanged"
+  },
+  {
+   "id": "2026-11-25-c13",
+   "t": 1795590955,
+   "do": "install",
+   "args": [
+    "install_takeprofit.sh"
+   ],
+   "note": "Telegram /takeprofit x: close the night at x% of premium earned (this night only; 'always' = standing; 0 = now; off) (c13)"
   }
  ]
 }
