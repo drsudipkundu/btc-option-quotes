@@ -71,6 +71,15 @@
     "install_caution.sh"
    ],
    "note": "Telegram /caution on|off: flexible exit for ONE news night only, self-clearing (c14). Needs c13 installed."
+  },
+  {
+   "id": "2026-11-25-c15",
+   "t": 1795592267,
+   "do": "install",
+   "args": [
+    "install_size.sh"
+   ],
+   "note": "Telegram /size x: one-night size multiplier 0.1 to 1 (smaller only), self-clearing (c15). Needs c14 installed."
   }
  ]
 }
