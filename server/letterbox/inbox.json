@@ -80,6 +80,15 @@
     "install_size.sh"
    ],
    "note": "Telegram /size x: one-night size multiplier 0.1 to 1 (smaller only), self-clearing (c15). Needs c14 installed."
+  },
+  {
+   "id": "2026-11-25-c16",
+   "t": 1795631029,
+   "do": "install",
+   "args": [
+    "install_reports.sh"
+   ],
+   "note": "scheduled Telegram+Gmail reports: 22:00 plan, 23:33 decision, 23:50 position, 07:00 and 17:22 status, status after changes; read-only, bot untouched (c16)"
   }
  ]
 }
