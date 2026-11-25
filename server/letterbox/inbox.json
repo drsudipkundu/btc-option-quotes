@@ -26,6 +26,15 @@
     "install_mailcode.sh"
    ],
    "note": "mail code update (c09), no position open"
+  },
+  {
+   "id": "2026-11-25-c10",
+   "t": 1795584434,
+   "do": "install",
+   "args": [
+    "install_hedgeorder.sh"
+   ],
+   "note": "hedge order: in/out switch then future last resort (c10), no position open"
   }
  ]
 }
