@@ -1,15 +1,6 @@
 {
  "commands": [
   {
-   "id": "2026-11-25-c14",
-   "t": 1795591440,
-   "do": "install",
-   "args": [
-    "install_caution.sh"
-   ],
-   "note": "Telegram /caution on|off: flexible exit for ONE news night only, self-clearing (c14). Needs c13 installed."
-  },
-  {
    "id": "2026-11-25-c15",
    "t": 1795592267,
    "do": "install",
@@ -80,6 +71,15 @@
     "install_sweep_calloff.sh"
    ],
    "note": "c22 (re-post of c21, its 30-minute yes window lapsed): sweep report calls OFF + 40% fall reserve, PAPER/REPORT ONLY (no money moves, no orders, bots untouched); keeps the 18:15 cron"
+  },
+  {
+   "id": "2026-11-26-c23",
+   "t": 1795699462,
+   "do": "install",
+   "args": [
+    "install_sweep_calloff.sh"
+   ],
+   "note": "c23 (replaces c22): sweep report calls OFF, ladder max Rs 8.8 L, minimum = held BTC + 30% fall reserve; PAPER/REPORT ONLY (no money moves, no orders, bots untouched); keeps the 18:15 cron"
   }
  ]
 }

@@ -46,7 +46,7 @@ CFG = dict(
     since="2026-10-21",
     cushion_frac=0.04, topup_frac=0.5, deadband=0.1, min_move_frac=0.1,
     pocket_floor_inr=5000.0, pocket_target_inr=30000.0,
-    ladder_max_inr=1_000_000.0,   # ladder max capital (Sudip 25-Nov): most it can ever block with BTC down to 0; reference line only for now
+    ladder_max_inr=880_000.0,   # ladder max capital (Sudip 25-Nov): most it can ever block with BTC down to 0; reference line only for now
     calls_on=True,   # set false in state/sweep_cfg.json once the v9 calls are stopped: no call margin, no rise test
 )
 
