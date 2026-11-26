@@ -288,6 +288,18 @@ def position_report(title="POSITION"):
     return "\n\n".join(x for x in L if x)
 
 
+def emergency_block():
+    """c19: one line from the emergency staged-release bot (stagedrel.py, c18). Silence from it would be ambiguous, so this says it is alive."""
+    d = jl("state/stagedrel_status.json")
+    if not d or not d.get("text"):
+        return "EMERGENCY BOT (staged margin release): no check recorded yet (c18 not installed, or no night position has been open since)."
+    age = (time.time() - float(d.get("t", 0))) / 60.0
+    txt = d["text"]
+    if age > 15 and "no night position" not in txt:
+        return "EMERGENCY BOT: WARNING last check was %.0f minutes ago (should be every 2 minutes): %s" % (age, txt)
+    return "EMERGENCY BOT (report only): %s (checked %.0f min ago)." % (txt, age)
+
+
 def status_report():
     import tgplus as T
     S = jl("state/night_nlive.json")
@@ -302,6 +314,7 @@ def status_report():
     else:
         L.append("No position is open.")
         L.append(sales_state()[0])
+    L.append(part(emergency_block))
     L.append(part(settings_text))
     L.append(part(daily_block, S))
     return "\n\n".join(x for x in L if x)

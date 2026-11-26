@@ -75,6 +75,13 @@ try:
     # 5
     st = R.status_report(); print(st)
     assert "PNL night" in st and "Earned so far" in st and "17:30 IST" in st
+    assert "EMERGENCY BOT" in st and "no check recorded" in st                      # c19: line present even before c18 wrote anything
+    sf = tmp + "/state/stagedrel_status.json"
+    json.dump(dict(t=time.time(), text="emergency bot watching: ladder covers 5.0% fall with Rs 1,00,000 to spare"), open(sf, "w"))
+    st = R.status_report(); assert "EMERGENCY BOT (report only): emergency bot watching: ladder covers 5.0% fall" in st, st
+    json.dump(dict(t=time.time() - 3600, text="emergency bot watching: ladder covers 5.0% fall"), open(sf, "w"))
+    st = R.status_report(); assert "EMERGENCY BOT: WARNING last check was" in st, st   # stale check is shouted, not hidden
+    os.remove(sf)
     put(); assert "No position is open." in R.status_report()
     # 6
     put(S=dict(night=today, legs=legs(), halt=None, plan=dict(trend=0.72), total_pnl=1, nights=1))
