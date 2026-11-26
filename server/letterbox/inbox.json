@@ -71,6 +71,15 @@
     "install_reports.sh"
    ],
    "note": "c19: 07:00 and 17:22 status reports get one line saying the emergency bot (c18) is alive; read-only, bot untouched"
+  },
+  {
+   "id": "2026-11-26-c20",
+   "t": 1795691425,
+   "do": "install",
+   "args": [
+    "install_entry_shadow.sh"
+   ],
+   "note": "entry-time shadow recorder (paperboy): paper entry every 30 min 18:00-11:00 IST, records spot, real 2.5% put+call quotes, then h/l/c at expiry; public data only, no keys, no orders, bots untouched (c20)"
   }
  ]
 }
