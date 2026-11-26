@@ -229,8 +229,19 @@ def message(d):
     return "\n".join(L)
 
 
+def bot_off(name):
+    """26-Nov-2026: Telegram /stop <bot> sets a flag in state/bots_off.json; the scheduled run then does nothing until /go <bot>"""
+    try:
+        return bool(json.load(open(os.path.join(STATE, "bots_off.json"))).get(name))
+    except Exception:
+        return False
+
+
 def main():
     show = "--show" in sys.argv
+    if not show and bot_off("emergency"):
+        json.dump(dict(t=time.time(), text="emergency bot: STOPPED by you (Telegram /go emergency starts it again)"), open(os.path.join(STATE, "stagedrel_status.json"), "w"))
+        return
     fake = None
     if "--fake-equity" in sys.argv:
         fake = float(sys.argv[sys.argv.index("--fake-equity") + 1])

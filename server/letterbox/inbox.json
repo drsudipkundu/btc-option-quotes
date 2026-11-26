@@ -1,15 +1,6 @@
 {
  "commands": [
   {
-   "id": "2026-11-25-c16",
-   "t": 1795631029,
-   "do": "install",
-   "args": [
-    "install_reports.sh"
-   ],
-   "note": "scheduled Telegram+Gmail reports: 22:00 plan, 23:33 decision, 23:50 position, 07:00 and 17:22 status, status after changes; read-only, bot untouched (c16)"
-  },
-  {
    "id": "2026-11-26-c17",
    "t": 1795684124,
    "do": "install",
@@ -80,6 +71,15 @@
     "install_sweep_calloff.sh"
    ],
    "note": "c24 (replaces c23): sweep report calls OFF, ladder max Rs 8.8 L, 30% fall reserve, NO daily cap in the report; PAPER/REPORT ONLY (no money moves, no orders, bots untouched); keeps the 18:15 cron"
+  },
+  {
+   "id": "2026-11-26-c25",
+   "t": 1795701993,
+   "do": "install",
+   "args": [
+    "install_botstop.sh"
+   ],
+   "note": "Telegram /stop and /go: switch the sweep, emergency and paperboy report bots off/on from the phone (/stop alone = status). Night sale untouched (that is /pause, /resume) (c25)"
   }
  ]
 }

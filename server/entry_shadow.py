@@ -151,11 +151,21 @@ def report(days=None):
         print("%-9s %3d  %6.2f  %7.2f  %7.2f  %6.2f  %6.1f  %5.3f  %5.3f  %5.3f  %8.2f" % (label(int(r[0]["entry_ts"])), n, a(up), a(dn), a(cl), pct(big, 95), max(big), a(pr), a(pa), a(pr) - a(pa), a(pa) / a(pr) if a(pr) else 0))
 
 
+def bot_off(name):
+    """26-Nov-2026: Telegram /stop paperboy sets a flag in state/bots_off.json; /go paperboy clears it"""
+    try:
+        return bool(json.load(open(os.path.join(HOME, "state", "bots_off.json"))).get(name))
+    except Exception:
+        return False
+
+
 def run():
     print("entry-shadow running", flush=True)
     while True:
         try:
             now = time.time()
+            if bot_off("paperboy"):
+                time.sleep(60); continue
             r = record_entry(now)
             if r:
                 print("entry", label(r["entry_ts"]), "x", r["x"], flush=True)

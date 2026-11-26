@@ -390,8 +390,18 @@ def email(subject, body):
         return False
 
 
+def bot_off(name):
+    """26-Nov-2026: Telegram /stop <bot> sets a flag in state/bots_off.json; the scheduled run then does nothing until /go <bot>"""
+    try:
+        return bool(json.load(open(os.path.join(STATE, "bots_off.json"))).get(name))
+    except Exception:
+        return False
+
+
 def main():
     show = "--show" in sys.argv
+    if not show and bot_off("sweep"):
+        print("sweep bot is STOPPED by you (Telegram /go sweep starts it again)"); return
     c = load_cfg()
     from liveorders import Live, Pub
     try:
