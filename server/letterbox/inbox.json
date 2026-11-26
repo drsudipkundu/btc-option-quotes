@@ -1,15 +1,6 @@
 {
  "commands": [
   {
-   "id": "2026-11-25-c13",
-   "t": 1795590955,
-   "do": "install",
-   "args": [
-    "install_takeprofit.sh"
-   ],
-   "note": "Telegram /takeprofit x: close the night at x% of premium earned (this night only; 'always' = standing; 0 = now; off) (c13)"
-  },
-  {
    "id": "2026-11-25-c14",
    "t": 1795591440,
    "do": "install",
@@ -80,6 +71,15 @@
     "install_sweep_calloff.sh"
    ],
    "note": "c21: sweep report calls OFF + 40% fall reserve, PAPER/REPORT ONLY (no money moves, no orders, bots untouched); keeps the 18:15 cron"
+  },
+  {
+   "id": "2026-11-26-c22",
+   "t": 1795698933,
+   "do": "install",
+   "args": [
+    "install_sweep_calloff.sh"
+   ],
+   "note": "c22 (re-post of c21, its 30-minute yes window lapsed): sweep report calls OFF + 40% fall reserve, PAPER/REPORT ONLY (no money moves, no orders, bots untouched); keeps the 18:15 cron"
   }
  ]
 }
