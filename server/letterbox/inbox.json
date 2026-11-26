@@ -53,6 +53,15 @@
     "install_cut.sh"
    ],
    "note": "Telegram /cut put|call qty|all [hedge]: manual force-exit with confirm, self-clearing (c17). Needs c14 installed. Leg order is a placeholder (biggest loss first); no position open now."
+  },
+  {
+   "id": "2026-11-26-c18",
+   "t": 1795687707,
+   "do": "install",
+   "args": [
+    "install_stagedrel.sh"
+   ],
+   "note": "c18 emergency staged margin release, REPORT ONLY (reads only, no order, no money move, bot untouched): would-cut and would-move messages when ladder money cannot cover a 5% fall"
   }
  ]
 }
