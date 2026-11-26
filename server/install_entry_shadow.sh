@@ -23,5 +23,5 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now entry-shadow
 sleep 70
 echo "entry-shadow: $(systemctl is-active entry-shadow)"
-ls -la ~/deltabot/entry_shadow; tail -2 ~/deltabot/entry_shadow/entries.csv 2>/dev/null | cut -c1-200
+ls -la ~/deltabot/entry_shadow; { tail -2 ~/deltabot/entry_shadow/entries.csv 2>/dev/null | cut -c1-200; } || true
 echo "ENTRY SHADOW INSTALL DONE   report any time: python3 ~/deltabot/recorder/entry_shadow.py report"
