@@ -89,6 +89,15 @@
     "install_reports.sh"
    ],
    "note": "scheduled Telegram+Gmail reports: 22:00 plan, 23:33 decision, 23:50 position, 07:00 and 17:22 status, status after changes; read-only, bot untouched (c16)"
+  },
+  {
+   "id": "2026-11-26-c17",
+   "t": 1795684124,
+   "do": "install",
+   "args": [
+    "install_cut.sh"
+   ],
+   "note": "Telegram /cut put|call qty|all [hedge]: manual force-exit with confirm, self-clearing (c17). Needs c14 installed. Leg order is a placeholder (biggest loss first); no position open now."
   }
  ]
 }
