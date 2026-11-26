@@ -1,15 +1,6 @@
 {
  "commands": [
   {
-   "id": "2026-11-25-c15",
-   "t": 1795592267,
-   "do": "install",
-   "args": [
-    "install_size.sh"
-   ],
-   "note": "Telegram /size x: one-night size multiplier 0.1 to 1 (smaller only), self-clearing (c15). Needs c14 installed."
-  },
-  {
    "id": "2026-11-25-c16",
    "t": 1795631029,
    "do": "install",
@@ -80,6 +71,15 @@
     "install_sweep_calloff.sh"
    ],
    "note": "c23 (replaces c22): sweep report calls OFF, ladder max Rs 8.8 L, minimum = held BTC + 30% fall reserve; PAPER/REPORT ONLY (no money moves, no orders, bots untouched); keeps the 18:15 cron"
+  },
+  {
+   "id": "2026-11-26-c24",
+   "t": 1795699796,
+   "do": "install",
+   "args": [
+    "install_sweep_calloff.sh"
+   ],
+   "note": "c24 (replaces c23): sweep report calls OFF, ladder max Rs 8.8 L, 30% fall reserve, NO daily cap in the report; PAPER/REPORT ONLY (no money moves, no orders, bots untouched); keeps the 18:15 cron"
   }
  ]
 }
