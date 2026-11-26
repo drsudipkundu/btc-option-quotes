@@ -50,6 +50,8 @@ EDITS = [
 def main():
     p = os.path.join(H, "letterbox.py")
     s = open(p).read()
+    if "def botswitch(" in s:
+        print("already patched - nothing to do"); return
     for old, new in EDITS:
         n = s.count(old)
         if n != 1:
