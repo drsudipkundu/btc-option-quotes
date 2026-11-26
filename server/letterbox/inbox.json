@@ -1,51 +1,6 @@
 {
  "commands": [
   {
-   "id": "2026-11-24-c07",
-   "t": 1795509634,
-   "do": "install",
-   "args": [
-    "install_batch1124.sh"
-   ],
-   "note": "ONE yes for 4 updates: autosize direct raise, sweep report v2 (report only), refused strike -> next strike, top-up side by side"
-  },
-  {
-   "id": "2026-11-25-c08",
-   "t": 1795583756,
-   "do": "install",
-   "args": [
-    "install_remind.sh"
-   ],
-   "note": "22:30 and 23:10 IST reminder when night sales are not running (no position open now)"
-  },
-  {
-   "id": "2026-11-25-c09",
-   "t": 1795584111,
-   "do": "install",
-   "args": [
-    "install_mailcode.sh"
-   ],
-   "note": "mail code update (c09), no position open"
-  },
-  {
-   "id": "2026-11-25-c10",
-   "t": 1795584434,
-   "do": "install",
-   "args": [
-    "install_hedgeorder.sh"
-   ],
-   "note": "hedge order: in/out switch then future last resort (c10), no position open"
-  },
-  {
-   "id": "2026-11-25-c11",
-   "t": 1795584655,
-   "do": "install",
-   "args": [
-    "install_strikelog.sh"
-   ],
-   "note": "strike-list logger, own service, public data only, bot untouched (c11)"
-  },
-  {
    "id": "2026-11-25-c12",
    "t": 1795590516,
    "do": "install",
