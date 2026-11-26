@@ -1,15 +1,6 @@
 {
  "commands": [
   {
-   "id": "2026-11-25-c12",
-   "t": 1795590516,
-   "do": "install",
-   "args": [
-    "install_retrylimit.sh"
-   ],
-   "note": "retry hedge limit by time (30/40/50/60/75% of sold option price now) + 25% buy-back of a decayed sold option (c12); retry only, sale-time hedge unchanged"
-  },
-  {
    "id": "2026-11-25-c13",
    "t": 1795590955,
    "do": "install",
@@ -80,6 +71,15 @@
     "install_entry_shadow.sh"
    ],
    "note": "entry-time shadow recorder (paperboy): paper entry every 30 min 18:00-11:00 IST, records spot, real 2.5% put+call quotes, then h/l/c at expiry; public data only, no keys, no orders, bots untouched (c20)"
+  },
+  {
+   "id": "2026-11-26-c21",
+   "t": 1795696846,
+   "do": "install",
+   "args": [
+    "install_sweep_calloff.sh"
+   ],
+   "note": "c21: sweep report calls OFF + 40% fall reserve, PAPER/REPORT ONLY (no money moves, no orders, bots untouched); keeps the 18:15 cron"
   }
  ]
 }
