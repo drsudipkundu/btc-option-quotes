@@ -1,15 +1,6 @@
 {
  "commands": [
   {
-   "id": "2026-11-26-c17",
-   "t": 1795684124,
-   "do": "install",
-   "args": [
-    "install_cut.sh"
-   ],
-   "note": "Telegram /cut put|call qty|all [hedge]: manual force-exit with confirm, self-clearing (c17). Needs c14 installed. Leg order is a placeholder (biggest loss first); no position open now."
-  },
-  {
    "id": "2026-11-26-c18",
    "t": 1795687707,
    "do": "install",
@@ -89,6 +80,15 @@
     "install_sweep_calloff.sh"
    ],
    "note": "c27: sweep report ladder minimum = Rs 8.8 L (= max, Sudip 27-Nov 'keep 8.8 lac for now'), calls OFF, 30% fall; PAPER/REPORT ONLY, no money moves, no orders, bots untouched"
+  },
+  {
+   "id": "2026-11-27-c28",
+   "t": 1795767798,
+   "do": "install",
+   "args": [
+    "install_paperbrake.sh"
+   ],
+   "note": "c28: paper ladders lv10-lv15 brake set to 0.16 BTC (worst case about Rs 8 L, within the Rs 8.8 L max). PAPER ONLY: live v9, night bots, money untouched; no restart; lowering a brake only stops new buys, held lots kept"
   }
  ]
 }
