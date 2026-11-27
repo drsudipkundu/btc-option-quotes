@@ -71,6 +71,15 @@
     "install_sweep_calloff.sh"
    ],
    "note": "c24 (replaces c23): sweep report calls OFF, ladder max Rs 8.8 L, 30% fall reserve, NO daily cap in the report; PAPER/REPORT ONLY (no money moves, no orders, bots untouched); keeps the 18:15 cron"
+  },
+  {
+   "id": "2026-11-27-c26",
+   "t": 1795766980,
+   "do": "install",
+   "args": [
+    "install_botstop.sh"
+   ],
+   "note": "c26 (re-post of c25, which was dropped from the inbox without a DONE mail and never installed): Telegram /stop and /go for the sweep, emergency and paperboy report bots; /stop alone = status. Night sale untouched (that is /pause, /resume)"
   }
  ]
 }
