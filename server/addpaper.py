@@ -4,7 +4,7 @@ Public Delta data only (GET): no API key, never places an order, never touches a
 what price does the ADD really get after the move, and what do the two hedge choices really cost?
 
 Every night (run by cron every 2 minutes):
-  23:30 IST  ANCHOR: spot x; per side the strike to watch K and its hedge strike Kh. If the live seller holds sold options for tonight, ITS strikes and far
+  23:34 IST  ANCHOR: spot x; per side the strike to watch K and its hedge strike Kh. If the live seller holds sold options for tonight, ITS strikes and far
              options are used (src=live, read-only from state/night_nlive.json); otherwise the nearest listed strike 2.5 % out and the far option 4 % beyond (src=model).
   until 05:30 IST  TRIGGER: the first time BTC is 1.0 % and the first time it is 1.5 % against a side (up for the call, down for the put), it records real quotes:
              bid of the SAME strike K, bid of a NEW strike Kn (nearest 2.5 % from the new price), ask of the OLD hedge Kh, ask of a NEW hedge Khn (nearest 4 % beyond Kn).
@@ -90,7 +90,7 @@ def live_strikes(exp_ts):
 def anchor(now, G=get, live=live_strikes):
     exp = next_expiry(now)
     a0 = exp - 18 * 3600                                  # 23:30 IST = 18:00 UTC the day before
-    if not a0 <= now <= a0 + 900:
+    if not a0 + 240 <= now <= a0 + 1200:              # 23:34-23:50 IST: after the live sale, so its strikes can be used
         return None
     x = float(G("/v2/tickers/BTCUSD")["mark_price"])
     ch = chain(exp, G); lv = live(exp) or {}

@@ -27,8 +27,8 @@ def G(path, params=None):
     raise RuntimeError(path)
 nolive = lambda exp: {}
 ok(A.next_expiry(T0) == EXP, "next expiry")
-ok(A.anchor(T0 - 3600, G, nolive) is None and A.anchor(T0 + 1000, G, nolive) is None, "anchor only at 23:30-23:45 IST")
-A.run(T0 + 60, G, nolive)
+ok(A.anchor(T0 + 60, G, nolive) is None and A.anchor(T0 + 1500, G, nolive) is None, "anchor only at 23:34-23:50 IST")
+A.run(T0 + 300, G, nolive)
 st = json.load(open(A.STF))
 ok(st["sides"]["C"]["K"] == 61400 and st["sides"]["P"]["K"] == 58400 and st["sides"]["C"]["src"] == "model", "model strikes: %s" % st["sides"])
 ok(st["sides"]["C"]["Kh"] == 63800 and st["sides"]["P"]["Kh"] == 56000, "hedge 4% beyond")
@@ -54,7 +54,7 @@ json.dump(dict(legs=[dict(sym="C-BTC-63000-291126", side="CE", dir="S", strike=6
                      dict(sym="P-BTC-50000-281126", side="PE", dir="S", strike=50000, closed=False, kind="trend")]), open(os.path.join(TMP, "state", "night_nlive.json"), "w"))
 lv = A.live_strikes(EXP + 86400); ok(lv == {"C": {"K": 63000.0, "Kh": 65600.0}}, "live strikes for the right expiry only: %s" % lv)
 SPOT[0] = 61000.0
-a = A.anchor(T0 + 86400 + 30, lambda p, q=None: G(p, q) if p != "/v2/tickers" else [dict(t, symbol=t["symbol"].replace("281126", "291126")) for t in G(p, q)], A.live_strikes)
+a = A.anchor(T0 + 86400 + 300, lambda p, q=None: G(p, q) if p != "/v2/tickers" else [dict(t, symbol=t["symbol"].replace("281126", "291126")) for t in G(p, q)], A.live_strikes)
 ok(a["sides"]["C"]["src"] == "live" and a["sides"]["C"]["K"] == 63000 and a["sides"]["P"]["src"] == "model", "live call strike + model put strike")
 A.report()
 print("SELFTEST ADDPAPER PASSED (%d checks)" % n[0])
