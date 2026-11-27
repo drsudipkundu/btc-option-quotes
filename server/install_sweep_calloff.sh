@@ -1,6 +1,6 @@
 #!/bin/bash
 # 25-Nov-2026 (step 2 of Sudip's plan, PAPER ONLY): sweep report with the CALLS-OFF switch. Writes only these 5 keys (cap_inr 1 crore = no daily cap in the report, Sudip 26-Nov) into state/sweep_cfg.json:
-# calls_on=false, fall_pct=30, ladder_floor_inr=0, ladder_max_inr=880000 (Sudip 26-Nov: ladder max Rs 8.8 L; ladder minimum = held-BTC margin + 30% fall reserve, the rest is only REPORTED as excess for serverbot).
+# calls_on=false, fall_pct=30, ladder_floor_inr=880000 (27-Nov: ladder minimum Rs 8.8 L for now), ladder_max_inr=880000 (Sudip 26-Nov: ladder max Rs 8.8 L; ladder minimum = held-BTC margin + 30% fall reserve, the rest is only REPORTED as excess for serverbot).
 # It only READS balances and sends Telegram + e-mail. Install ONLY after the Tradetron call switch-off is confirmed (cc_state=3, no call sold).
 # The file has no transfer call, so it cannot move money or place orders. Keeps the 18:15 IST cron line. Order: download both files ->
 # syntax check -> offline self-test (stops if anything fails, nothing is replaced) -> replace -> print-only first look.
@@ -24,7 +24,7 @@ try:
     c = json.load(open(p))
 except Exception:
     c = {}
-c.update(calls_on=False, fall_pct=30, ladder_floor_inr=0, ladder_max_inr=880000, cap_inr=10000000)
+c.update(calls_on=False, fall_pct=30, ladder_floor_inr=880000, ladder_max_inr=880000, cap_inr=10000000)
 json.dump(c, open(p, "w"), indent=1)
 print("sweep_cfg.json now:", c)
 PY

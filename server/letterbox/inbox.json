@@ -80,6 +80,15 @@
     "install_botstop.sh"
    ],
    "note": "c26 (re-post of c25, which was dropped from the inbox without a DONE mail and never installed): Telegram /stop and /go for the sweep, emergency and paperboy report bots; /stop alone = status. Night sale untouched (that is /pause, /resume)"
+  },
+  {
+   "id": "2026-11-27-c27",
+   "t": 1795767575,
+   "do": "install",
+   "args": [
+    "install_sweep_calloff.sh"
+   ],
+   "note": "c27: sweep report ladder minimum = Rs 8.8 L (= max, Sudip 27-Nov 'keep 8.8 lac for now'), calls OFF, 30% fall; PAPER/REPORT ONLY, no money moves, no orders, bots untouched"
   }
  ]
 }
